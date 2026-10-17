@@ -1762,14 +1762,12 @@ pub async fn get_message_body(
     // Shown now: its HTML's retention period starts over.
     storage::messages::touch_html(&state.pool, message_id, now_epoch()).await?;
 
-    let policy = storage::settings::remote_image_policy(&state.pool).await?;
     let redundant = quote_repeats_thread(&state.pool, message_id, loaded.text.as_deref()).await?;
     let mut body = sanitized_body(
         &state.pool,
         loaded.html,
         loaded.text,
         &loaded.images,
-        policy,
         load_remote,
         redundant,
     )
@@ -1980,7 +1978,6 @@ pub async fn thread_bodies(
         }
     }
 
-    let policy = storage::settings::remote_image_policy(&state.pool).await?;
     let own = storage::accounts::own_emails(&state.pool).await?;
     let mut bodies = std::collections::HashMap::new();
     // Oldest first (thread_of order): each message's quote is compared to
@@ -2003,7 +2000,6 @@ pub async fn thread_bodies(
             row.body_html,
             row.body_text,
             &images,
-            policy,
             None,
             redundant,
         )
@@ -2164,16 +2160,17 @@ async fn unique_path(dir: &std::path::Path, name: &str) -> Result<std::path::Pat
 // SECURITY: the single place message HTML is prepared for the frontend —
 // everything goes through mail::sanitize::build_srcdoc, cached or fresh.
 // Remote images load only under policy Always or an explicit Ask-click;
-// under Block a stray load_remote from the frontend changes nothing.
+// under Block a stray load_remote from the frontend changes nothing. The
+// policy is read here, next to where it is enforced.
 async fn sanitized_body(
     pool: &sqlx::SqlitePool,
     html: Option<String>,
     text: Option<String>,
     images: &[mail::parse::InlineImage],
-    policy: RemoteImagePolicy,
     load_remote: Option<bool>,
     redundant_quote: bool,
 ) -> Result<MessageBody, AppError> {
+    let policy = storage::settings::remote_image_policy(pool).await?;
     let load = policy == RemoteImagePolicy::Always
         || (policy == RemoteImagePolicy::Ask && load_remote.unwrap_or(false));
 
