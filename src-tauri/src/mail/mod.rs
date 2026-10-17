@@ -11,6 +11,7 @@ pub mod sanitize;
 pub mod smtp;
 pub mod sync;
 pub mod trackers;
+pub mod translate;
 
 use std::future::Future;
 use std::time::Duration;
