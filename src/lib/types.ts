@@ -225,6 +225,20 @@ export interface TranslationProgress {
   total: number;
 }
 
+/** Mirrors TranslatedBody in models.rs: a message's HTML and/or own text
+ *  with the translation in place — shown over the original body, whose
+ *  quoted history, attachments and warnings stay. */
+export interface TranslatedBody {
+  html: string | null;
+  text: string | null;
+}
+
+/** Mirrors TranslationPartial in models.rs: the body translated so far. */
+export interface TranslationPartial {
+  requestId: string;
+  body: TranslatedBody;
+}
+
 /** Mirrors LlmDownloadProgress in models.rs. */
 export interface LlmDownloadProgress {
   id: string;

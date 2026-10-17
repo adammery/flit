@@ -1,8 +1,14 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import type { MessageBody, TranslationProgress } from "./types";
+import type {
+  MessageBody,
+  TranslatedBody,
+  TranslationPartial,
+  TranslationProgress,
+} from "./types";
 
 let progressListener: ((progress: TranslationProgress) => void) | null = null;
-let resolveCall: ((body: MessageBody) => void) | null = null;
+let partialListener: ((partial: TranslationPartial) => void) | null = null;
+let resolveCall: ((body: TranslatedBody) => void) | null = null;
 let rejectCall: ((err: Error) => void) | null = null;
 
 vi.mock("./api", () => ({
@@ -13,9 +19,15 @@ vi.mock("./api", () => ({
       return () => {};
     },
   ),
+  onTranslationPartial: vi.fn(
+    async (callback: (partial: TranslationPartial) => void) => {
+      partialListener = callback;
+      return () => {};
+    },
+  ),
   translateMessage: vi.fn(
     () =>
-      new Promise<MessageBody>((resolve, reject) => {
+      new Promise<TranslatedBody>((resolve, reject) => {
         resolveCall = resolve;
         rejectCall = reject;
       }),
@@ -24,13 +36,18 @@ vi.mock("./api", () => ({
 }));
 
 import * as api from "./api";
-import { runTranslation, type TranslationState } from "./translations";
+import {
+  runTranslation,
+  translatedView,
+  type TranslationState,
+} from "./translations";
 
-const translated = { html: "<p>Ahoj</p>" } as MessageBody;
+const translated: TranslatedBody = { html: "<p>Ahoj</p>", text: "Ahoj" };
 
 beforeEach(() => {
   vi.clearAllMocks();
   progressListener = null;
+  partialListener = null;
   resolveCall = null;
   rejectCall = null;
 });
@@ -83,4 +100,42 @@ it("a cancelled run stops the backend and stays silent", async () => {
 
   expect(api.cancelSummary).toHaveBeenCalledWith("req-1");
   expect(states).toHaveLength(1);
+});
+
+it("shows the body translated so far while the model works", async () => {
+  const states: TranslationState[] = [];
+  runTranslation(7, false, (state) => states.push(state));
+  await settle();
+
+  const half: TranslatedBody = { html: "<p>Ahoj</p><p>Welt</p>", text: null };
+  partialListener!({ requestId: "other", body: translated });
+  partialListener!({ requestId: "req-1", body: half });
+  progressListener!({ requestId: "req-1", done: 20, total: 40 });
+
+  expect(states.at(-1)).toEqual({
+    loading: true,
+    done: 20,
+    total: 40,
+    body: half,
+    error: null,
+  });
+});
+
+it("lays a translation's text over the original body", () => {
+  const original: MessageBody = {
+    html: "<p>Hallo</p>",
+    text: "Hallo",
+    quotedText: "> alt",
+    blockedImages: 0,
+    canLoadRemote: false,
+    attachments: [],
+    auth: null,
+    senderAnomaly: null,
+  };
+
+  expect(translatedView(original, translated)).toEqual({
+    ...original,
+    html: "<p>Ahoj</p>",
+    text: "Ahoj",
+  });
 });

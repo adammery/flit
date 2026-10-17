@@ -6,7 +6,11 @@
     saveAttachment,
   } from "./api";
   import { runSummary, type SummaryRun, type SummaryState } from "./summaries";
-  import { runTranslation, type TranslationState } from "./translations";
+  import {
+    runTranslation,
+    translatedView,
+    type TranslationState,
+  } from "./translations";
   import { extColor, fileExt } from "./attachments";
   import { interceptBodyLinks } from "./bodyLinks";
   import { formatFileSize, formatFullDate, senderName } from "./format";
@@ -154,7 +158,9 @@
   let richBody = $state<MessageBody | null>(null);
   let original = $derived(richBody ?? body);
   let shown = $derived(
-    showTranslation && translation?.body ? translation.body : original,
+    showTranslation && translation?.body && original
+      ? translatedView(original, translation.body)
+      : original,
   );
 
   // Folded quoted history of a text body; opens per card, like Gmail's •••.

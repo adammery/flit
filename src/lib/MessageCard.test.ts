@@ -17,14 +17,9 @@ vi.mock("./api", () => ({
   translateMessage: vi.fn(async () => ({
     html: "<!doctype html><html><body><p>ahoj</p></body></html>",
     text: "ahoj",
-    quotedText: null,
-    blockedImages: 0,
-    canLoadRemote: false,
-    attachments: [],
-    auth: null,
-    senderAnomaly: null,
   })),
   onTranslationProgress: vi.fn(async () => () => {}),
+  onTranslationPartial: vi.fn(async () => () => {}),
 }));
 
 import * as api from "./api";
@@ -285,4 +280,28 @@ it("shows why a translation failed and offers it again", async () => {
 
   expect((await findByRole("alert")).textContent).toContain("no text to translate");
   expect(getByLabelText("Translate this message")).toBeInTheDocument();
+});
+
+it("keeps the original's attachments under a translated body", async () => {
+  const { getByLabelText, findByText, getByText } = renderCard({
+    canTranslate: true,
+    body: {
+      ...body,
+      attachments: [
+        {
+          id: 5,
+          messageId: 1,
+          partIndex: 2,
+          filename: "rechnung.pdf",
+          contentType: "application/pdf",
+          size: 2048,
+        },
+      ],
+    },
+  });
+
+  await fireEvent.click(getByLabelText("Translate this message"));
+
+  expect(await findByText("Translated")).toBeInTheDocument();
+  expect(getByText("rechnung.pdf")).toBeInTheDocument();
 });

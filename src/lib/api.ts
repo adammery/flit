@@ -11,6 +11,8 @@ import type {
   LlmDownloadProgress,
   LlmStatus,
   SummaryToken,
+  TranslatedBody,
+  TranslationPartial,
   TranslationProgress,
   DateTimeFormat,
   Mailbox,
@@ -591,16 +593,16 @@ export function onSummaryToken(
   );
 }
 
-/** The message's body with its text translated by the local model into
- *  the language picked in Settings — the same sanitized render as
- *  getMessageBody, its texts swapped. Progress arrives on
- *  onTranslationProgress; cancelSummary with the same request id stops it. */
+/** The message's text translated by the local model into the language
+ *  picked in Settings — rendered like getMessageBody, its texts swapped.
+ *  Progress arrives on onTranslationProgress, the body so far on
+ *  onTranslationPartial; cancelSummary with the same request id stops it. */
 export function translateMessage(
   messageId: number,
   loadRemote: boolean,
   requestId = newRequestId(),
-): Promise<MessageBody> {
-  return invoke<MessageBody>("translate_message", {
+): Promise<TranslatedBody> {
+  return invoke<TranslatedBody>("translate_message", {
     messageId,
     loadRemote,
     requestId,
@@ -612,6 +614,15 @@ export function onTranslationProgress(
   callback: (progress: TranslationProgress) => void,
 ): Promise<UnlistenFn> {
   return listen<TranslationProgress>("translation-progress", (event) =>
+    callback(event.payload),
+  );
+}
+
+/** The body of translations being written, after every batch. */
+export function onTranslationPartial(
+  callback: (partial: TranslationPartial) => void,
+): Promise<UnlistenFn> {
+  return listen<TranslationPartial>("translation-partial", (event) =>
     callback(event.payload),
   );
 }

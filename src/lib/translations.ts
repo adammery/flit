@@ -1,22 +1,32 @@
 import {
   cancelSummary,
   newRequestId,
+  onTranslationPartial,
   onTranslationProgress,
   translateMessage,
 } from "./api";
 import type { SummaryRun } from "./summaries";
-import type { MessageBody } from "./types";
+import type { MessageBody, TranslatedBody } from "./types";
 
 /** What a translation row shows: progress while the model works, then the
- *  translated body (or why there is none). */
+ *  translated body (or why there is none). The body grows batch by batch
+ *  while `loading`. */
 export interface TranslationState {
   loading: boolean;
   /** Pieces of text translated so far, out of `total` (0 until the first
    *  batch reports). */
   done: number;
   total: number;
-  body: MessageBody | null;
+  body: TranslatedBody | null;
   error: string | null;
+}
+
+/** The original body with a translation's text shown in its place. */
+export function translatedView(
+  original: MessageBody,
+  translated: TranslatedBody,
+): MessageBody {
+  return { ...original, html: translated.html, text: translated.text };
 }
 
 /**
@@ -32,26 +42,35 @@ export function runTranslation(
   const requestId = newRequestId();
   let settled = false;
   let progress = { done: 0, total: 0 };
-  const base = { body: null, error: null };
-  update({ ...base, loading: true, ...progress });
-  const unlisten = onTranslationProgress((event) => {
+  let body: TranslatedBody | null = null;
+  const working = () =>
+    update({ loading: true, ...progress, body, error: null });
+  working();
+  const unlistenProgress = onTranslationProgress((event) => {
     if (event.requestId !== requestId || settled) return;
     progress = { done: event.done, total: event.total };
-    update({ ...base, loading: true, ...progress });
+    working();
+  });
+  const unlistenPartial = onTranslationPartial((event) => {
+    if (event.requestId !== requestId || settled) return;
+    body = event.body;
+    working();
   });
   const done = translateMessage(messageId, loadRemote, requestId)
-    .then((body) => {
+    .then((full) => {
       if (settled) return;
       settled = true;
-      update({ ...base, loading: false, ...progress, body });
+      update({ loading: false, ...progress, body: full, error: null });
     })
     .catch((err: unknown) => {
       if (settled) return;
       settled = true;
-      update({ ...base, loading: false, ...progress, error: String(err) });
+      // A failed run shows the original again, with the reason.
+      update({ loading: false, ...progress, body: null, error: String(err) });
     })
     .finally(() => {
-      void unlisten.then((stop) => stop());
+      void unlistenProgress.then((stop) => stop());
+      void unlistenPartial.then((stop) => stop());
     });
   return {
     cancel: () => {

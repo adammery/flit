@@ -8,7 +8,7 @@ use crate::models::{
     Account, Alias, Appearance, AuthKind, AuthResults, DateTimeFormat, LlmStatus, Mailbox,
     MessageBody, MessageHeader, MessageQuote, MessagesChanged, NewAccount, NotificationSettings,
     OutgoingMessage, RemoteImagePolicy, SearchResults, ShortcutAction, ShortcutBinding, Signature,
-    SwipeActions, ThreadOrder,
+    SwipeActions, ThreadOrder, TranslatedBody, TranslationPartial,
 };
 use crate::state::AppState;
 use crate::timing;
@@ -2707,11 +2707,12 @@ pub async fn cancel_summary(
     Ok(())
 }
 
-/// The message's body with its text translated by the picked local model
-/// into the language picked in Settings → Experimental — the same sanitized
-/// render as get_message_body, its texts swapped (see mail::translate).
-/// Progress goes out as `translation-progress` events tagged with
-/// `request_id`, which cancel_summary also takes. Nothing leaves the machine.
+/// The message's text translated by the picked local model into the
+/// language picked in Settings → Experimental — rendered like
+/// get_message_body, its texts swapped (see mail::translate). Progress goes
+/// out as `translation-progress` events, the body translated so far as
+/// `translation-partial` after every batch, both tagged with `request_id`,
+/// which cancel_summary also takes. Nothing leaves the machine.
 #[tauri::command]
 pub async fn translate_message(
     app: AppHandle,
@@ -2719,7 +2720,7 @@ pub async fn translate_message(
     message_id: i64,
     load_remote: Option<bool>,
     request_id: String,
-) -> Result<MessageBody, AppError> {
+) -> Result<TranslatedBody, AppError> {
     let language = storage::settings::llm_translate_language(&state.pool).await?;
     // why check a stored value: the name goes into the prompt word for word.
     if !llm::translate::valid_language(&language) {
@@ -2743,26 +2744,36 @@ pub async fn translate_message(
             "This message has no text to translate.".to_string(),
         ));
     }
-    let translations =
-        llm::translate_texts(&app, message_id, &texts, language, &request_id, |_| {}).await?;
 
+    // Settled before the model starts, so every batch re-renders at once.
     let redundant = quote_repeats_thread(&state.pool, message_id, loaded.text.as_deref()).await?;
-    let mut body = sanitized_body(
-        &state.pool,
-        loaded.html,
-        loaded.text,
-        &loaded.images,
-        load_remote,
-        redundant,
-        Some(&translations),
-    )
-    .await?;
-    body.attachments = storage::messages::attachments(&state.pool, message_id).await?;
-    body.auth = loaded.auth;
-    let own = storage::accounts::own_emails(&state.pool).await?;
-    body.sender_anomaly =
-        storage::contacts::sender_anomaly(&state.pool, &loaded.from, &own).await?;
-    Ok(body)
+    let inputs = render_inputs(&state.pool, loaded.html.as_deref(), load_remote).await?;
+    let render = |translations: &std::collections::HashMap<String, String>| {
+        let body = render_body(
+            loaded.html.as_deref(),
+            loaded.text.as_deref(),
+            &loaded.images,
+            &inputs,
+            redundant,
+            Some(translations),
+        );
+        TranslatedBody {
+            html: body.html,
+            text: body.text,
+        }
+    };
+    let translations =
+        llm::translate_texts(&app, message_id, &texts, language, &request_id, |so_far| {
+            let _ = app.emit(
+                "translation-partial",
+                TranslationPartial {
+                    request_id: request_id.clone(),
+                    body: render(so_far),
+                },
+            );
+        })
+        .await?;
+    Ok(render(&translations))
 }
 
 /// The message's stored text, fetching the body if it is not cached yet.

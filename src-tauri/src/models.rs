@@ -374,6 +374,26 @@ pub struct TranslationProgress {
     pub total: usize,
 }
 
+/// A message's text as translated, for the viewer to show over the original
+/// body: its sanitized HTML and/or own plain text with the translation in
+/// place. Everything else — quoted history, attachments, warnings — stays
+/// the original's.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslatedBody {
+    pub html: Option<String>,
+    pub text: Option<String>,
+}
+
+/// Payload of the `translation-partial` event: the body with the pieces
+/// translated so far, after every batch.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationPartial {
+    pub request_id: String,
+    pub body: TranslatedBody,
+}
+
 /// Payload of the `llm-download-progress` event.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
