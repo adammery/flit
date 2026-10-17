@@ -274,10 +274,21 @@ pub fn resolve_language(setting: &str, text: &str) -> Option<String> {
     if setting != AUTO_LANGUAGE && !setting.trim().is_empty() {
         return Some(setting.trim().to_string());
     }
+    detect_language(text)
+}
+
+/// Characters language detection reads: plenty to tell, and a giant
+/// newsletter stays cheap to check on every open.
+const LANGUAGE_SAMPLE_CHARS: usize = 2_000;
+
+/// The language `text` is written in, by English name ("Slovak"); `None`
+/// when it is too short or too ambiguous to tell. Offline (whatlang).
+pub fn detect_language(text: &str) -> Option<String> {
     if text.chars().count() < LANGUAGE_MIN_CHARS {
         return None;
     }
-    match whatlang::detect(text) {
+    let sample: String = text.chars().take(LANGUAGE_SAMPLE_CHARS).collect();
+    match whatlang::detect(&sample) {
         Some(info) if info.confidence() >= LANGUAGE_CONFIDENCE => {
             Some(info.lang().eng_name().to_string())
         }
