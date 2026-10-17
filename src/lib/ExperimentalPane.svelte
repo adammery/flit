@@ -14,20 +14,8 @@
     setLlmSummaryLanguage,
   } from "./api";
   import { formatFileSize } from "./format";
+  import { LANGUAGES } from "./languages";
   import type { LlmStatus } from "./types";
-
-  /** The prompt takes the English name verbatim ("Write in Slovak."). */
-  const LANGUAGES = [
-    "Slovak",
-    "Czech",
-    "English",
-    "German",
-    "Polish",
-    "Hungarian",
-    "French",
-    "Spanish",
-    "Italian",
-  ];
 
   let enabled = $state(false);
   let status = $state<LlmStatus | null>(null);
