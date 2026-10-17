@@ -49,6 +49,7 @@ beforeEach(() => {
     activeModel: null,
     ready: false,
     translateReady: false,
+    translateLanguage: "English",
     models: [
       {
         id: "small",

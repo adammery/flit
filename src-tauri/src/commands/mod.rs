@@ -2237,9 +2237,11 @@ fn render_body(
     // Text bodies fold their quoted history on the frontend — split here so
     // the detection lives in one place (mail::quote). A quote the caller
     // verified as repeating an earlier thread message renders nothing.
+    let mut language = None;
     let (text, quoted_text) = match text {
         Some(t) => {
             let (own, quoted) = mail::quote::split_text_quote(t);
+            language = llm::summarize::detect_language(&own);
             let own = match translations {
                 Some(translations) => mail::translate::apply_text(&own, translations),
                 None => own,
@@ -2263,6 +2265,7 @@ fn render_body(
         attachments: Vec::new(),
         auth: None,
         sender_anomaly: None,
+        language,
     }
 }
 
@@ -3195,6 +3198,23 @@ pub async fn close_settings(app: AppHandle) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rendered_body_names_the_language_of_its_own_text() {
+        let inputs = RenderInputs {
+            policy: RemoteImagePolicy::Block,
+            load: false,
+            remote: std::collections::HashMap::new(),
+        };
+        let text = "Hallo Anna,\n\nich schicke dir die Rechnung für August. Bitte überweise \
+                    den Betrag bis Ende des Monats.\n\nOn Mon, Bob wrote:\n> Hi, any news?";
+
+        let body = render_body(None, Some(text), &[], &inputs, false, None);
+        assert_eq!(body.language.as_deref(), Some("German"));
+
+        let short = render_body(None, Some("ok"), &[], &inputs, false, None);
+        assert_eq!(short.language, None);
+    }
 
     #[test]
     fn appearance_maps_to_a_pinned_theme_or_none_for_system() {

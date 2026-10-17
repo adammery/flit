@@ -323,6 +323,8 @@ pub struct LlmStatus {
     pub ready: bool,
     /// The same for translation.
     pub translate_ready: bool,
+    /// The language translations go into (see llm_translate_language).
+    pub translate_language: String,
     pub models: Vec<LlmModel>,
 }
 
@@ -781,6 +783,10 @@ pub struct MessageBody {
     /// Set when the From line pairs a familiar name with an address that
     /// name does not usually use (see storage::contacts::sender_anomaly).
     pub sender_anomaly: Option<SenderAnomaly>,
+    /// The language of the message's own text by English name ("German"),
+    /// detected offline; None when too short or ambiguous to tell. The
+    /// viewer offers translation only when it differs from the reader's.
+    pub language: Option<String>,
 }
 
 /// Quote material for a reply: the original message rendered for embedding

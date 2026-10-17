@@ -191,6 +191,8 @@ export interface LlmStatus {
   ready: boolean;
   /** The same for translation. */
   translateReady: boolean;
+  /** The language translations go into ("Slovak"). */
+  translateLanguage: string;
   models: LlmModel[];
 }
 
@@ -332,6 +334,9 @@ export interface MessageBody {
   /** Set when a familiar name arrived from an address it doesn't usually
    * use — the Canary-style warning, computed from local history only. */
   senderAnomaly: SenderAnomaly | null;
+  /** Language of the message's own text by English name ("German"),
+   * detected offline; null when too short or ambiguous to tell. */
+  language: string | null;
 }
 
 /** Mirrors AuthResults in models.rs. Each field is the lowercase verdict

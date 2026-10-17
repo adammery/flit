@@ -139,6 +139,7 @@ it("lays a translation's text over the original body", () => {
     attachments: [],
     auth: null,
     senderAnomaly: null,
+    language: null,
   };
 
   expect(translatedView(original, translated)).toEqual({

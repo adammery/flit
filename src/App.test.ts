@@ -822,6 +822,7 @@ it("opens the search hit that was clicked, not the newest of its thread", async 
       attachments: [],
       auth: null,
       senderAnomaly: null,
+      language: null,
     },
     51: {
       html: null,
@@ -832,6 +833,7 @@ it("opens the search hit that was clicked, not the newest of its thread", async 
       attachments: [],
       auth: null,
       senderAnomaly: null,
+      language: null,
     },
   });
 

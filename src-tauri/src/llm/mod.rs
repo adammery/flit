@@ -37,12 +37,14 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(200);
 pub async fn status(app: &AppHandle, pool: &SqlitePool) -> Result<LlmStatus, AppError> {
     let enabled = settings::llm_summary_enabled(pool).await?;
     let translate_enabled = settings::llm_translate_enabled(pool).await?;
+    let translate_language = settings::llm_translate_language(pool).await?;
     let active = settings::llm_model(pool).await?;
     let downloads = app.state::<AppState>().llm_downloads.snapshot();
     Ok(describe(
         &store::models_dir(app)?,
         enabled,
         translate_enabled,
+        translate_language,
         active,
         &downloads,
     ))
@@ -54,6 +56,7 @@ fn describe(
     dir: &Path,
     enabled: bool,
     translate_enabled: bool,
+    translate_language: String,
     active_model: Option<String>,
     downloads: &HashMap<String, download::Snapshot>,
 ) -> LlmStatus {
@@ -90,6 +93,7 @@ fn describe(
         active_model,
         ready: enabled && model_ready,
         translate_ready: translate_enabled && model_ready,
+        translate_language,
         models,
     }
 }
@@ -701,7 +705,14 @@ mod tests {
 
     #[test]
     fn lists_every_catalog_model_as_missing_on_a_fresh_machine() {
-        let status = describe(&scratch_dir("fresh"), true, false, None, &HashMap::new());
+        let status = describe(
+            &scratch_dir("fresh"),
+            true,
+            false,
+            "English".into(),
+            None,
+            &HashMap::new(),
+        );
 
         assert_eq!(status.models.len(), catalog::MODELS.len());
         assert!(status
@@ -718,13 +729,40 @@ mod tests {
 
         let none = HashMap::new();
         // File present but the feature is off.
-        assert!(!describe(&dir, false, false, Some("qwen3.5-2b".into()), &none).ready);
+        assert!(
+            !describe(
+                &dir,
+                false,
+                false,
+                "English".into(),
+                Some("qwen3.5-2b".into()),
+                &none
+            )
+            .ready
+        );
         // On, but nothing picked.
-        assert!(!describe(&dir, true, false, None, &none).ready);
+        assert!(!describe(&dir, true, false, "English".into(), None, &none).ready);
         // On, but the pick is a model that is not downloaded.
-        assert!(!describe(&dir, true, false, Some("qwen3.5-4b".into()), &none).ready);
+        assert!(
+            !describe(
+                &dir,
+                true,
+                false,
+                "English".into(),
+                Some("qwen3.5-4b".into()),
+                &none
+            )
+            .ready
+        );
 
-        let status = describe(&dir, true, false, Some("qwen3.5-2b".into()), &none);
+        let status = describe(
+            &dir,
+            true,
+            false,
+            "English".into(),
+            Some("qwen3.5-2b".into()),
+            &none,
+        );
         assert!(status.ready);
         assert_eq!(
             status
@@ -742,11 +780,25 @@ mod tests {
         fake_download(&dir, "qwen3.5-2b");
         let none = HashMap::new();
 
-        let status = describe(&dir, false, true, Some("qwen3.5-2b".into()), &none);
+        let status = describe(
+            &dir,
+            false,
+            true,
+            "English".into(),
+            Some("qwen3.5-2b".into()),
+            &none,
+        );
         assert!(status.translate_ready);
         assert!(!status.ready);
 
-        let status = describe(&dir, true, false, Some("qwen3.5-2b".into()), &none);
+        let status = describe(
+            &dir,
+            true,
+            false,
+            "English".into(),
+            Some("qwen3.5-2b".into()),
+            &none,
+        );
         assert!(!status.translate_ready);
         assert!(status.ready);
     }
@@ -772,7 +824,14 @@ mod tests {
             },
         );
 
-        let status = describe(&dir, true, false, Some("qwen3.5-2b".into()), &downloads);
+        let status = describe(
+            &dir,
+            true,
+            false,
+            "English".into(),
+            Some("qwen3.5-2b".into()),
+            &downloads,
+        );
 
         let state_of = |id: &str| {
             status

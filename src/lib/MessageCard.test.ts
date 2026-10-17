@@ -56,6 +56,7 @@ const body: MessageBody = {
   attachments: [],
   auth: null,
   senderAnomaly: null,
+  language: null,
 };
 
 function renderCard(extra: Record<string, unknown> = {}) {

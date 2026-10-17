@@ -12,6 +12,7 @@ function body(partial: Partial<MessageBody>): MessageBody {
     attachments: [],
     auth: null,
     senderAnomaly: null,
+    language: null,
     ...partial,
   };
 }
@@ -27,6 +28,7 @@ vi.mock("./api", () => ({
     attachments: [],
     auth: null,
     senderAnomaly: null,
+    language: null,
   })),
   saveAttachment: vi.fn(async () => {}),
   saveAllAttachments: vi.fn(async () => {}),
