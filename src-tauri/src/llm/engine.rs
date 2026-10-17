@@ -534,11 +534,31 @@ mod tests {
                 }
             }
         }
+        // Markers: did every marked piece get all its markers back?
+        let markers = |text: &str| {
+            let mut found: Vec<String> = text
+                .split('⟦')
+                .skip(1)
+                .filter_map(|rest| rest.split_once('⟧').map(|(m, _)| m.trim().to_string()))
+                .collect();
+            found.sort();
+            found
+        };
+        let marked: Vec<&String> = texts.iter().filter(|t| t.contains('⟦')).collect();
+        let kept = marked
+            .iter()
+            .filter(|t| {
+                translations
+                    .get(**t)
+                    .is_some_and(|tr| markers(tr) == markers(t))
+            })
+            .count();
         eprintln!(
-            "--- {}/{} pieces in {:.1}s ---",
+            "--- {}/{} pieces in {:.1}s; markers kept in {kept}/{} marked pieces ---",
             translations.len(),
             texts.len(),
-            started.elapsed().as_secs_f32()
+            started.elapsed().as_secs_f32(),
+            marked.len()
         );
         let doc = sanitize::build_srcdoc(
             &html,
