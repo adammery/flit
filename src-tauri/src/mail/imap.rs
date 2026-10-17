@@ -51,19 +51,33 @@ pub async fn connect(
             .connect(host, tcp)
             .await
             .map_err(|e| AppError::Imap(format!("tls handshake: {e}")))?;
-        let client = async_imap::Client::new(tls);
-        match credential {
-            Credential::Password(password) => client.login(username, password).await,
-            Credential::AccessToken(token) => {
-                client
-                    .authenticate("XOAUTH2", XOAuth2::new(username, token))
-                    .await
-            }
-        }
-        .map_err(|(e, _)| AppError::Imap(format!("login: {e}")))
+        log_in(tls, username, credential).await
     })
     .await
     .map_err(|_| AppError::Imap(format!("connection to {host}:{port} timed out")))?
+}
+
+/// LOGIN, or AUTHENTICATE for a token, over a connection already open.
+/// why generic over the stream: a test can drive it over an in-memory pipe
+/// standing in for the server, without a network or TLS.
+async fn log_in<T>(
+    stream: T,
+    username: &str,
+    credential: &Credential,
+) -> Result<Session<T>, AppError>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    let client = async_imap::Client::new(stream);
+    match credential {
+        Credential::Password(password) => client.login(username, password).await,
+        Credential::AccessToken(token) => {
+            client
+                .authenticate("XOAUTH2", XOAuth2::new(username, token))
+                .await
+        }
+    }
+    .map_err(|(e, _)| AppError::Imap(format!("login: {e}")))
 }
 
 /// SASL XOAUTH2, the OAuth login Gmail and Outlook accept over IMAP: one
