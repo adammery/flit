@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { LlmDownloadProgress, LlmStatus } from "./types";
 
 let enabled = false;
+let translateEnabled = false;
 let status: LlmStatus;
 let progressListener: ((progress: LlmDownloadProgress) => void) | null = null;
 let changedListener: (() => void) | null = null;
@@ -10,9 +11,13 @@ let changedListener: (() => void) | null = null;
 vi.mock("./api", () => ({
   getLlmSummaryEnabled: vi.fn(async () => enabled),
   setLlmSummaryEnabled: vi.fn(async () => undefined),
+  getLlmTranslateEnabled: vi.fn(async () => translateEnabled),
+  setLlmTranslateEnabled: vi.fn(async () => undefined),
   llmStatus: vi.fn(async () => status),
   getLlmSummaryLanguage: vi.fn(async () => "auto"),
   setLlmSummaryLanguage: vi.fn(async () => undefined),
+  getLlmTranslateLanguage: vi.fn(async () => "English"),
+  setLlmTranslateLanguage: vi.fn(async () => undefined),
   setLlmModel: vi.fn(async () => undefined),
   downloadLlmModel: vi.fn(async () => undefined),
   cancelLlmDownload: vi.fn(async () => undefined),
@@ -37,10 +42,13 @@ beforeEach(() => {
   progressListener = null;
   changedListener = null;
   enabled = false;
+  translateEnabled = false;
   status = {
     enabled: false,
+    translateEnabled: false,
     activeModel: null,
     ready: false,
+    translateReady: false,
     models: [
       {
         id: "small",
@@ -244,4 +252,45 @@ it("shows the stored summary language", async () => {
   render(ExperimentalPane);
 
   expect(await screen.findByLabelText("Summary language")).toHaveValue("German");
+});
+
+it("saves switching translation on apart from summaries", async () => {
+  render(ExperimentalPane);
+  const box = await screen.findByLabelText(
+    "Translate messages with a local AI model",
+  );
+  expect(box).not.toBeChecked();
+
+  await fireEvent.click(box);
+
+  expect(api.setLlmTranslateEnabled).toHaveBeenCalledWith(true);
+  expect(api.setLlmSummaryEnabled).not.toHaveBeenCalled();
+});
+
+it("offers the model picker for translation alone", async () => {
+  translateEnabled = true;
+  status.translateEnabled = true;
+  render(ExperimentalPane);
+
+  expect(await screen.findByText("Small 2B")).toBeInTheDocument();
+  expect(screen.getByLabelText("Translate messages into")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Summary language")).toBeNull();
+});
+
+it("stores the language messages are translated into", async () => {
+  translateEnabled = true;
+  status.translateEnabled = true;
+  vi.mocked(api.getLlmTranslateLanguage).mockResolvedValueOnce("Slovak");
+  render(ExperimentalPane);
+
+  const select = await screen.findByLabelText("Translate messages into");
+  expect(select).toHaveValue("Slovak");
+  // A translation needs a target: no "same as the message" here.
+  expect(
+    Array.from((select as HTMLSelectElement).options).map((o) => o.value),
+  ).not.toContain("auto");
+
+  await fireEvent.change(select, { target: { value: "German" } });
+
+  expect(api.setLlmTranslateLanguage).toHaveBeenCalledWith("German");
 });

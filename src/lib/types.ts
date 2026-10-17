@@ -181,12 +181,16 @@ export interface NotificationSettings {
 
 /** Mirrors LlmStatus in models.rs. */
 export interface LlmStatus {
-  /** The Experimental switch. */
+  /** The Experimental switch for summaries. */
   enabled: boolean;
+  /** The Experimental switch for translation. */
+  translateEnabled: boolean;
   /** Id of the picked model, if any. */
   activeModel: string | null;
-  /** Switched on and the picked model's file is complete on disk. */
+  /** Summaries on and the picked model's file is complete on disk. */
   ready: boolean;
+  /** The same for translation. */
+  translateReady: boolean;
   models: LlmModel[];
 }
 

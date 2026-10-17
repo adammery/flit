@@ -5,6 +5,8 @@
     downloadLlmModel,
     getLlmSummaryEnabled,
     getLlmSummaryLanguage,
+    getLlmTranslateEnabled,
+    getLlmTranslateLanguage,
     llmStatus,
     onLlmDownloadProgress,
     onLlmModelsChanged,
@@ -12,14 +14,18 @@
     setLlmModel,
     setLlmSummaryEnabled,
     setLlmSummaryLanguage,
+    setLlmTranslateEnabled,
+    setLlmTranslateLanguage,
   } from "./api";
   import { formatFileSize } from "./format";
   import { LANGUAGES } from "./languages";
   import type { LlmStatus } from "./types";
 
   let enabled = $state(false);
+  let translateEnabled = $state(false);
   let status = $state<LlmStatus | null>(null);
   let language = $state("auto");
+  let translateLanguage = $state("English");
   let error = $state<string | null>(null);
 
   async function refresh() {
@@ -36,6 +42,19 @@
     } catch (err) {
       // why: the box must not lie — a failed save rolls the value back.
       enabled = previous;
+      error = String(err);
+    }
+  }
+
+  async function toggleTranslate(next: boolean) {
+    error = null;
+    const previous = translateEnabled;
+    translateEnabled = next;
+    try {
+      await setLlmTranslateEnabled(next);
+      await refresh();
+    } catch (err) {
+      translateEnabled = previous;
       error = String(err);
     }
   }
@@ -63,9 +82,23 @@
     }
   }
 
+  async function pickTranslateLanguage(next: string) {
+    error = null;
+    const previous = translateLanguage;
+    translateLanguage = next;
+    try {
+      await setLlmTranslateLanguage(next);
+    } catch (err) {
+      translateLanguage = previous;
+      error = String(err);
+    }
+  }
+
   onMount(() => {
     void getLlmSummaryEnabled().then((stored) => (enabled = stored));
+    void getLlmTranslateEnabled().then((stored) => (translateEnabled = stored));
     void getLlmSummaryLanguage().then((stored) => (language = stored));
+    void getLlmTranslateLanguage().then((stored) => (translateLanguage = stored));
     void refresh();
     // why patch in place: progress ticks several times a second and the
     // status call walks the models directory — re-reading it per tick
@@ -86,7 +119,7 @@
 
 <section class="pane">
   <fieldset>
-    <legend>On-device summaries</legend>
+    <legend>On-device AI</legend>
     <div class="choice">
       <input
         type="checkbox"
@@ -99,15 +132,27 @@
         <small>Adds a summarize button to messages and threads.</small>
       </span>
     </div>
+    <div class="choice">
+      <input
+        type="checkbox"
+        id="llm-translate"
+        checked={translateEnabled}
+        onchange={(e) => void toggleTranslate(e.currentTarget.checked)}
+      />
+      <span>
+        <label for="llm-translate">Translate messages with a local AI model</label>
+        <small>Adds a translate button to messages.</small>
+      </span>
+    </div>
     <p class="explain">
-      Experimental. Summaries are written by a small language model that runs
-      entirely on this Mac — no message ever leaves it. The model is a
-      separate download you pick and start yourself; switching this on
-      downloads nothing by itself.
+      Experimental. Summaries and translations are written by a small language
+      model that runs entirely on this Mac — no message ever leaves it. The
+      model is a separate download you pick and start yourself; switching
+      these on downloads nothing by itself.
     </p>
   </fieldset>
 
-  {#if enabled && status}
+  {#if (enabled || translateEnabled) && status}
     <fieldset>
       <legend>Model</legend>
       <ul class="models">
@@ -186,30 +231,56 @@
       <p class="explain">
         Models are fetched once from huggingface.co over TLS, verified, and
         kept in Flit's data folder. Several can be downloaded to compare; the
-        picked one writes the summaries.
+        picked one writes the summaries and translations.
       </p>
     </fieldset>
 
-    <fieldset>
-      <legend>Summaries</legend>
-      <div class="setting">
-        <label for="llm-language">Summary language</label>
-        <select
-          id="llm-language"
-          value={language}
-          onchange={(e) => void pickLanguage(e.currentTarget.value)}
-        >
-          <option value="auto">Same as the message</option>
-          {#each LANGUAGES as name (name)}
-            <option value={name}>{name}</option>
-          {/each}
-        </select>
-      </div>
-      <p class="explain">
-        Small models follow the message's language well for common ones; pick
-        yours here if a summary comes back in the wrong language.
-      </p>
-    </fieldset>
+    {#if enabled}
+      <fieldset>
+        <legend>Summaries</legend>
+        <div class="setting">
+          <label for="llm-language">Summary language</label>
+          <select
+            id="llm-language"
+            value={language}
+            onchange={(e) => void pickLanguage(e.currentTarget.value)}
+          >
+            <option value="auto">Same as the message</option>
+            {#each LANGUAGES as name (name)}
+              <option value={name}>{name}</option>
+            {/each}
+          </select>
+        </div>
+        <p class="explain">
+          Small models follow the message's language well for common ones; pick
+          yours here if a summary comes back in the wrong language.
+        </p>
+      </fieldset>
+
+    {/if}
+
+    {#if translateEnabled}
+      <fieldset>
+        <legend>Translation</legend>
+        <div class="setting">
+          <label for="llm-translate-language">Translate messages into</label>
+          <select
+            id="llm-translate-language"
+            value={translateLanguage}
+            onchange={(e) => void pickTranslateLanguage(e.currentTarget.value)}
+          >
+            {#each LANGUAGES as name (name)}
+              <option value={name}>{name}</option>
+            {/each}
+          </select>
+        </div>
+        <p class="explain">
+          A Translate button on every message rewrites its text in this
+          language, in place — on this Mac, with the same model. Long
+          newsletters take a minute or more.
+        </p>
+      </fieldset>
+    {/if}
   {/if}
 
   {#if error}

@@ -526,6 +526,26 @@ export function setLlmSummaryLanguage(language: string): Promise<void> {
   return invoke<void>("set_llm_summary_language", { language });
 }
 
+/** Whether on-device translation is on — its own switch, apart from
+ *  summaries. Off until switched on. */
+export function getLlmTranslateEnabled(): Promise<boolean> {
+  return invoke<boolean>("get_llm_translate_enabled");
+}
+
+export function setLlmTranslateEnabled(enabled: boolean): Promise<void> {
+  return invoke<void>("set_llm_translate_enabled", { enabled });
+}
+
+/** Language messages are translated into — an English language name such
+ *  as "Slovak"; never "auto". */
+export function getLlmTranslateLanguage(): Promise<string> {
+  return invoke<string>("get_llm_translate_language");
+}
+
+export function setLlmTranslateLanguage(language: string): Promise<void> {
+  return invoke<void>("set_llm_translate_language", { language });
+}
+
 /** A plain-text summary of one message, written by the local model.
  *  Rejects with guidance when the feature is off or no model is ready.
  *  Cached per inputs; `fresh` asks for a new one. */
