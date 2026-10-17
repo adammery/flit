@@ -65,14 +65,14 @@ it("reports a failure", async () => {
   const states: SummaryState[] = [];
   runSummary("message", 7, true, (state) => states.push(state));
   await settle();
-  rejectCall!(new Error("summary error: cannot load model"));
+  rejectCall!(new Error("local model error: cannot load model"));
   await settle();
 
   expect(api.summarizeMessage).toHaveBeenCalledWith(7, true, "req-1");
   expect(states.at(-1)).toEqual({
     loading: false,
     text: null,
-    error: "Error: summary error: cannot load model",
+    error: "Error: local model error: cannot load model",
   });
 });
 
@@ -83,7 +83,7 @@ it("cancelling stops the backend and silences later updates", async () => {
 
   run.cancel();
   tokenListener!({ requestId: "req-1", text: "late" });
-  rejectCall!(new Error("Summary cancelled."));
+  rejectCall!(new Error("Cancelled."));
   await settle();
 
   expect(api.cancelSummary).toHaveBeenCalledWith("req-1");

@@ -27,7 +27,7 @@ pub enum AppError {
     Http(String),
     /// The local model could not load or answer; the message says which
     /// step (load, prompt, context, generation) gave up.
-    #[error("summary error: {0}")]
+    #[error("local model error: {0}")]
     Llm(String),
     /// OAuth sign-in or token refresh failed; the message says which step.
     #[error("sign-in error: {0}")]

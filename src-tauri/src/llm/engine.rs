@@ -243,7 +243,7 @@ fn complete(
     let mut streamed = 0;
     for pos in (tokens.len()..).take(request.max_tokens) {
         if request.cancel.load(Ordering::Relaxed) {
-            return Err(AppError::Invalid("Summary cancelled.".to_string()));
+            return Err(AppError::Invalid("Cancelled.".to_string()));
         }
         let token = sampler.sample(&ctx, batch.n_tokens() - 1);
         sampler.accept(token);
