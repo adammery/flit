@@ -312,13 +312,17 @@ impl Default for NotificationSettings {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmStatus {
-    /// The Experimental switch.
+    /// The Experimental switch for summaries.
     pub enabled: bool,
+    /// The Experimental switch for translation.
+    pub translate_enabled: bool,
     /// Id of the picked model, if any (see llm::catalog).
     pub active_model: Option<String>,
     /// Summaries can run right now: switched on and the picked model's
     /// file is complete on disk.
     pub ready: bool,
+    /// The same for translation.
+    pub translate_ready: bool,
     pub models: Vec<LlmModel>,
 }
 
@@ -358,6 +362,16 @@ pub enum LlmModelState {
 pub struct SummaryToken {
     pub request_id: String,
     pub text: String,
+}
+
+/// Payload of the `translation-progress` event: pieces of the message
+/// translated so far, out of `total`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationProgress {
+    pub request_id: String,
+    pub done: usize,
+    pub total: usize,
 }
 
 /// Payload of the `llm-download-progress` event.

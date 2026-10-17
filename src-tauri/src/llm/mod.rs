@@ -24,6 +24,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::error::AppError;
 use crate::models::{
     LlmDownloadProgress, LlmModel, LlmModelState, LlmStatus, MessageHeader, SummaryToken,
+    TranslationProgress,
 };
 use crate::state::AppState;
 use crate::storage::{self, settings};
@@ -35,11 +36,13 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(200);
 /// The current state of the feature, for Settings and the main window.
 pub async fn status(app: &AppHandle, pool: &SqlitePool) -> Result<LlmStatus, AppError> {
     let enabled = settings::llm_summary_enabled(pool).await?;
+    let translate_enabled = settings::llm_translate_enabled(pool).await?;
     let active = settings::llm_model(pool).await?;
     let downloads = app.state::<AppState>().llm_downloads.snapshot();
     Ok(describe(
         &store::models_dir(app)?,
         enabled,
+        translate_enabled,
         active,
         &downloads,
     ))
@@ -50,6 +53,7 @@ pub async fn status(app: &AppHandle, pool: &SqlitePool) -> Result<LlmStatus, App
 fn describe(
     dir: &Path,
     enabled: bool,
+    translate_enabled: bool,
     active_model: Option<String>,
     downloads: &HashMap<String, download::Snapshot>,
 ) -> LlmStatus {
@@ -76,15 +80,16 @@ fn describe(
             },
         })
         .collect();
-    let ready = enabled
-        && active_model
-            .as_deref()
-            .and_then(catalog::find)
-            .is_some_and(|spec| store::is_ready(dir, spec));
+    let model_ready = active_model
+        .as_deref()
+        .and_then(catalog::find)
+        .is_some_and(|spec| store::is_ready(dir, spec));
     LlmStatus {
         enabled,
+        translate_enabled,
         active_model,
-        ready,
+        ready: enabled && model_ready,
+        translate_ready: translate_enabled && model_ready,
         models,
     }
 }
@@ -233,13 +238,32 @@ struct Picked {
     path: std::path::PathBuf,
 }
 
+/// Which experimental feature wants the model — each has its own switch.
+#[derive(Debug, Clone, Copy)]
+enum Feature {
+    Summaries,
+    Translation,
+}
+
 /// The picked model, only when the feature is on and its file is here;
 /// otherwise an error that reads as guidance for the user.
-async fn ready_model(app: &AppHandle, pool: &SqlitePool) -> Result<Picked, AppError> {
-    if !settings::llm_summary_enabled(pool).await? {
-        return Err(AppError::Invalid(
-            "Summaries are switched off — see Settings → Experimental.".to_string(),
-        ));
+async fn ready_model(
+    app: &AppHandle,
+    pool: &SqlitePool,
+    feature: Feature,
+) -> Result<Picked, AppError> {
+    let switched_on = match feature {
+        Feature::Summaries => settings::llm_summary_enabled(pool).await?,
+        Feature::Translation => settings::llm_translate_enabled(pool).await?,
+    };
+    if !switched_on {
+        let name = match feature {
+            Feature::Summaries => "Summaries are",
+            Feature::Translation => "Translation is",
+        };
+        return Err(AppError::Invalid(format!(
+            "{name} switched off — see Settings → Experimental."
+        )));
     }
     let spec = settings::llm_model(pool)
         .await?
@@ -305,7 +329,7 @@ pub async fn cached_message_summary(
     body_text: &str,
 ) -> Result<Option<String>, AppError> {
     let state = app.state::<AppState>();
-    let Ok(picked) = ready_model(app, &state.pool).await else {
+    let Ok(picked) = ready_model(app, &state.pool, Feature::Summaries).await else {
         return Ok(None);
     };
     let language = settings::llm_summary_language(&state.pool).await?;
@@ -323,7 +347,7 @@ pub async fn cached_thread_summary(
     messages: &[(MessageHeader, String)],
 ) -> Result<Option<String>, AppError> {
     let state = app.state::<AppState>();
-    let Ok(picked) = ready_model(app, &state.pool).await else {
+    let Ok(picked) = ready_model(app, &state.pool, Feature::Summaries).await else {
         return Ok(None);
     };
     let language = settings::llm_summary_language(&state.pool).await?;
@@ -341,7 +365,7 @@ pub async fn summarize_message(
     request_id: &str,
 ) -> Result<String, AppError> {
     let state = app.state::<AppState>();
-    let picked = ready_model(app, &state.pool).await?;
+    let picked = ready_model(app, &state.pool, Feature::Summaries).await?;
     if summarize::prepare_text(body_text, summarize::MESSAGE_CHARS).is_empty() {
         return Err(AppError::Invalid(
             "This message has no text to summarize.".to_string(),
@@ -386,7 +410,7 @@ pub async fn summarize_thread(
     request_id: &str,
 ) -> Result<String, AppError> {
     let state = app.state::<AppState>();
-    let picked = ready_model(app, &state.pool).await?;
+    let picked = ready_model(app, &state.pool, Feature::Summaries).await?;
     let mut sources = Vec::with_capacity(messages.len());
     for (header, text) in messages {
         if summarize::prepare_text(text, summarize::MESSAGE_CHARS).is_empty() {
@@ -429,6 +453,124 @@ pub async fn summarize_thread(
     .await?;
     storage::summaries::put(&state.pool, &key, &text).await?;
     Ok(text)
+}
+
+/// Translate a message's pieces of text (see mail::translate) into
+/// `language` with the picked model: source text → translation, for every
+/// piece the model answered. A piece it skipped twice, and everything past
+/// `translate::MAX_CHARS`, stays as it is. Cached like summaries; progress
+/// goes out as `translation-progress` events after every batch, and
+/// cancel_summary stops it under `request_id`.
+pub async fn translate_texts(
+    app: &AppHandle,
+    message_id: i64,
+    texts: &[String],
+    language: &str,
+    request_id: &str,
+) -> Result<HashMap<String, String>, AppError> {
+    let state = app.state::<AppState>();
+    let picked = ready_model(app, &state.pool, Feature::Translation).await?;
+    let texts = translate::within_cap(texts);
+    let id = message_id.to_string();
+    let parts = [id.as_str(), translate::RULES]
+        .into_iter()
+        .chain(texts.iter().map(String::as_str));
+    let key = summarize::cache_key("translation", picked.spec.id, language, parts);
+    if let Some(cached) = storage::summaries::get(&state.pool, &key).await? {
+        // why ignore a parse failure: the row is only a cache — redo it.
+        if let Ok(translations) = serde_json::from_str(&cached) {
+            return Ok(translations);
+        }
+    }
+    let cancel = state.llm_summaries.begin(request_id);
+    let result = translate_batches(app, &picked, texts, language, request_id, &cancel).await;
+    state.llm_summaries.finish(request_id);
+    let translations = result?;
+    if let Ok(json) = serde_json::to_string(&translations) {
+        storage::summaries::put(&state.pool, &key, &json).await?;
+    }
+    Ok(translations)
+}
+
+/// Every batch through the model, then once more for the pieces it skipped
+/// — a small model now and then drops a line of a numbered list.
+async fn translate_batches(
+    app: &AppHandle,
+    picked: &Picked,
+    texts: &[String],
+    language: &str,
+    request_id: &str,
+    cancel: &engine::CancelFlag,
+) -> Result<HashMap<String, String>, AppError> {
+    let engine = &app.state::<AppState>().llm_engine;
+    let mut translations = HashMap::new();
+    let mut pending = texts.to_vec();
+    // The count shows from the start, not only once the first batch is in
+    // — loading the model alone takes seconds.
+    emit_translation_progress(app, request_id, 0, texts.len());
+    for _pass in 0..2 {
+        let mut skipped = Vec::new();
+        for range in translate::batches(&pending) {
+            let batch: Vec<&str> = pending[range].iter().map(String::as_str).collect();
+            // why a sink: the count moves with every piece the model
+            // finishes, not once per batch of 20 — the reader sees work.
+            let sink: engine::TokenSink = {
+                let app = app.clone();
+                let request_id = request_id.to_string();
+                let (base, total, count) = (translations.len(), texts.len(), batch.len());
+                let mut streamed = String::new();
+                let mut shown = 0;
+                Box::new(move |piece: &str| {
+                    streamed.push_str(piece);
+                    let finished = translate::finished_so_far(&streamed, count);
+                    if finished > shown {
+                        shown = finished;
+                        emit_translation_progress(&app, &request_id, base + finished, total);
+                    }
+                })
+            };
+            let answer = engine
+                .complete(engine::Request {
+                    model_path: picked.path.clone(),
+                    messages: translate::prompt(&batch, language),
+                    max_tokens: translate::max_tokens(&batch),
+                    assistant_prefix: format!(
+                        "{}{}",
+                        picked.spec.assistant_prefix,
+                        translate::ANSWER_START
+                    ),
+                    on_token: Some(sink),
+                    cancel: cancel.clone(),
+                })
+                .await?;
+            let answer = format!("{}{answer}", translate::ANSWER_START);
+            for (source, translation) in batch.iter().zip(translate::parse(&answer, batch.len())) {
+                match translation {
+                    Some(translation) => {
+                        translations.insert(source.to_string(), translation);
+                    }
+                    None => skipped.push(source.to_string()),
+                }
+            }
+            emit_translation_progress(app, request_id, translations.len(), texts.len());
+        }
+        if skipped.is_empty() {
+            break;
+        }
+        pending = skipped;
+    }
+    Ok(translations)
+}
+
+fn emit_translation_progress(app: &AppHandle, request_id: &str, done: usize, total: usize) {
+    let _ = app.emit(
+        "translation-progress",
+        TranslationProgress {
+            request_id: request_id.to_string(),
+            done,
+            total,
+        },
+    );
 }
 
 /// Start fetching a model in the background; returns as soon as the task is
@@ -545,7 +687,7 @@ mod tests {
 
     #[test]
     fn lists_every_catalog_model_as_missing_on_a_fresh_machine() {
-        let status = describe(&scratch_dir("fresh"), true, None, &HashMap::new());
+        let status = describe(&scratch_dir("fresh"), true, false, None, &HashMap::new());
 
         assert_eq!(status.models.len(), catalog::MODELS.len());
         assert!(status
@@ -562,13 +704,13 @@ mod tests {
 
         let none = HashMap::new();
         // File present but the feature is off.
-        assert!(!describe(&dir, false, Some("qwen3.5-2b".into()), &none).ready);
+        assert!(!describe(&dir, false, false, Some("qwen3.5-2b".into()), &none).ready);
         // On, but nothing picked.
-        assert!(!describe(&dir, true, None, &none).ready);
+        assert!(!describe(&dir, true, false, None, &none).ready);
         // On, but the pick is a model that is not downloaded.
-        assert!(!describe(&dir, true, Some("qwen3.5-4b".into()), &none).ready);
+        assert!(!describe(&dir, true, false, Some("qwen3.5-4b".into()), &none).ready);
 
-        let status = describe(&dir, true, Some("qwen3.5-2b".into()), &none);
+        let status = describe(&dir, true, false, Some("qwen3.5-2b".into()), &none);
         assert!(status.ready);
         assert_eq!(
             status
@@ -578,6 +720,21 @@ mod tests {
                 .map(|m| m.state.clone()),
             Some(LlmModelState::Ready)
         );
+    }
+
+    #[test]
+    fn translation_is_ready_on_its_own_switch() {
+        let dir = scratch_dir("translate");
+        fake_download(&dir, "qwen3.5-2b");
+        let none = HashMap::new();
+
+        let status = describe(&dir, false, true, Some("qwen3.5-2b".into()), &none);
+        assert!(status.translate_ready);
+        assert!(!status.ready);
+
+        let status = describe(&dir, true, false, Some("qwen3.5-2b".into()), &none);
+        assert!(!status.translate_ready);
+        assert!(status.ready);
     }
 
     #[test]
@@ -601,7 +758,7 @@ mod tests {
             },
         );
 
-        let status = describe(&dir, true, Some("qwen3.5-2b".into()), &downloads);
+        let status = describe(&dir, true, false, Some("qwen3.5-2b".into()), &downloads);
 
         let state_of = |id: &str| {
             status
