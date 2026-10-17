@@ -21,8 +21,10 @@ const SWIPE_LEFT_KEY: &str = "swipe_left";
 const SWIPE_RIGHT_KEY: &str = "swipe_right";
 const AVATAR_LOOKUP_KEY: &str = "avatar_lookup";
 const LLM_SUMMARY_KEY: &str = "llm_summary";
+const LLM_TRANSLATE_KEY: &str = "llm_translate";
 const LLM_MODEL_KEY: &str = "llm_model";
 const LLM_SUMMARY_LANGUAGE_KEY: &str = "llm_summary_language";
+const LLM_TRANSLATE_LANGUAGE_KEY: &str = "llm_translate_language";
 const MAINTENANCE_REV_KEY: &str = "maintenance_rev";
 
 async fn value(pool: &SqlitePool, key: &str) -> Result<Option<String>, AppError> {
@@ -173,6 +175,44 @@ pub async fn llm_summary_language(pool: &SqlitePool) -> Result<String, AppError>
 
 pub async fn set_llm_summary_language(pool: &SqlitePool, language: &str) -> Result<(), AppError> {
     upsert(pool, LLM_SUMMARY_LANGUAGE_KEY, language.trim()).await
+}
+
+/// The language messages are translated into: the stored pick, else the
+/// summary language when that names one, else English. Never "auto" — a
+/// translation needs a language to go to.
+pub async fn llm_translate_language(pool: &SqlitePool) -> Result<String, AppError> {
+    if let Some(language) = value(pool, LLM_TRANSLATE_LANGUAGE_KEY)
+        .await?
+        .filter(|language| !language.trim().is_empty())
+    {
+        return Ok(language);
+    }
+    let summary = llm_summary_language(pool).await?;
+    Ok(if summary == crate::llm::summarize::AUTO_LANGUAGE {
+        "English".to_string()
+    } else {
+        summary
+    })
+}
+
+pub async fn set_llm_translate_language(pool: &SqlitePool, language: &str) -> Result<(), AppError> {
+    upsert(pool, LLM_TRANSLATE_LANGUAGE_KEY, language.trim()).await
+}
+
+/// The Experimental switch for on-device translation — its own switch, so
+/// a reader can have translation without summaries. Same "only a stored
+/// true counts" rule as the summaries switch.
+pub async fn llm_translate_enabled(pool: &SqlitePool) -> Result<bool, AppError> {
+    Ok(value(pool, LLM_TRANSLATE_KEY).await?.as_deref() == Some("true"))
+}
+
+pub async fn set_llm_translate_enabled(pool: &SqlitePool, enabled: bool) -> Result<(), AppError> {
+    upsert(
+        pool,
+        LLM_TRANSLATE_KEY,
+        if enabled { "true" } else { "false" },
+    )
+    .await
 }
 
 /// The stored remote-image policy, falling back to the default (Ask) when
@@ -532,6 +572,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn llm_translate_is_off_until_switched_on_apart_from_summaries() {
+        let pool = test_pool().await;
+        set_llm_summary_enabled(&pool, true).await.unwrap();
+
+        assert!(!llm_translate_enabled(&pool).await.unwrap());
+
+        set_llm_translate_enabled(&pool, true).await.unwrap();
+        set_llm_summary_enabled(&pool, false).await.unwrap();
+        assert!(llm_translate_enabled(&pool).await.unwrap());
+    }
+
+    #[tokio::test]
     async fn a_corrupt_llm_summary_value_reads_as_off() {
         let pool = test_pool().await;
         sqlx::query("INSERT INTO settings (key, value) VALUES ('llm_summary', 'yolo')")
@@ -577,6 +629,19 @@ mod tests {
 
         set_llm_summary_language(&pool, "").await.unwrap();
         assert_eq!(llm_summary_language(&pool).await.unwrap(), "auto");
+    }
+
+    #[tokio::test]
+    async fn translate_language_follows_the_summary_one_until_picked() {
+        let pool = test_pool().await;
+
+        assert_eq!(llm_translate_language(&pool).await.unwrap(), "English");
+
+        set_llm_summary_language(&pool, "Slovak").await.unwrap();
+        assert_eq!(llm_translate_language(&pool).await.unwrap(), "Slovak");
+
+        set_llm_translate_language(&pool, " German ").await.unwrap();
+        assert_eq!(llm_translate_language(&pool).await.unwrap(), "German");
     }
 
     #[tokio::test]

@@ -2502,6 +2502,22 @@ pub async fn set_llm_summary_enabled(
 }
 
 #[tauri::command]
+pub async fn get_llm_translate_enabled(state: State<'_, AppState>) -> Result<bool, AppError> {
+    storage::settings::llm_translate_enabled(&state.pool).await
+}
+
+#[tauri::command]
+pub async fn set_llm_translate_enabled(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), AppError> {
+    storage::settings::set_llm_translate_enabled(&state.pool, enabled).await?;
+    app.emit("settings-changed", ())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn llm_status(app: AppHandle, state: State<'_, AppState>) -> Result<LlmStatus, AppError> {
     llm::status(&app, &state.pool).await
 }
@@ -2532,6 +2548,25 @@ pub async fn set_llm_summary_language(
     language: String,
 ) -> Result<(), AppError> {
     storage::settings::set_llm_summary_language(&state.pool, &language).await?;
+    app.emit("settings-changed", ())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_llm_translate_language(state: State<'_, AppState>) -> Result<String, AppError> {
+    storage::settings::llm_translate_language(&state.pool).await
+}
+
+#[tauri::command]
+pub async fn set_llm_translate_language(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    language: String,
+) -> Result<(), AppError> {
+    if !llm::translate::valid_language(&language) {
+        return Err(AppError::Invalid(format!("Unknown language: {language}")));
+    }
+    storage::settings::set_llm_translate_language(&state.pool, &language).await?;
     app.emit("settings-changed", ())?;
     Ok(())
 }
