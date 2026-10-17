@@ -35,7 +35,7 @@
     onDraft,
     onDelete,
     canSummarize = false,
-    canTranslate = false,
+    translateInto = null,
   }: {
     message: MessageHeader;
     /** This message's body from the conversation's bulk load; null while
@@ -58,9 +58,9 @@
     /** Offer the local-model summary button (Experimental switch on and a
      * model downloaded). */
     canSummarize?: boolean;
-    /** Offer the local-model translate button (its own Experimental switch
-     * on and a model downloaded). */
-    canTranslate?: boolean;
+    /** The language the local model translates into (its own Experimental
+     * switch on and a model downloaded); null: no translate button. */
+    translateInto?: string | null;
   } = $props();
 
   // The on-device summary of this card, once asked for. Plain text from
@@ -157,6 +157,13 @@
   // body — it wins over the prop until this card instance dies.
   let richBody = $state<MessageBody | null>(null);
   let original = $derived(richBody ?? body);
+  // Offered unless the message is already in the reader's language — an
+  // undetected language still gets the offer, and a translation under way
+  // keeps its controls.
+  let canTranslate = $derived(
+    translateInto !== null &&
+      (translation !== null || original?.language !== translateInto),
+  );
   let shown = $derived(
     showTranslation && translation?.body && original
       ? translatedView(original, translation.body)

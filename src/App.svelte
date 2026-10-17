@@ -377,14 +377,15 @@
     threadOrder = await getThreadOrder();
   }
 
-  // Whether message cards offer the on-device summary and translation:
-  // each one's Experimental switch is on and the picked model is downloaded.
+  // Whether message cards offer the on-device summary, and the language
+  // they offer translation into (null: not offered) — each feature's
+  // Experimental switch on and the picked model downloaded.
   let llmReady = $state(false);
-  let llmTranslateReady = $state(false);
+  let llmTranslateInto = $state<string | null>(null);
   async function refreshLlmReady() {
     const status = await llmStatus();
     llmReady = status.ready;
-    llmTranslateReady = status.translateReady;
+    llmTranslateInto = status.translateReady ? status.translateLanguage : null;
   }
 
   // How dates and clock times are written. Unlike the two above this is no
@@ -1180,7 +1181,7 @@
         onEditDraft={editDraft}
         onDeleteDraft={deleteDraft}
         canSummarize={llmReady}
-        canTranslate={llmTranslateReady}
+        translateInto={llmTranslateInto}
       />
     </section>
   </main>

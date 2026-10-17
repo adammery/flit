@@ -239,7 +239,7 @@ it("offers no translate button unless translation is ready", () => {
 
 it("offers translation without summaries", async () => {
   const { getByLabelText, queryByLabelText } = renderCard({
-    canTranslate: true,
+    translateInto: "Slovak",
   });
 
   expect(queryByLabelText("Summarize this message")).toBeNull();
@@ -251,7 +251,7 @@ it("offers translation without summaries", async () => {
 it("translates the body in place and flips back to the original", async () => {
   const { container, getByLabelText, findByText, getByText, queryByText } = renderCard({
     canSummarize: true,
-    canTranslate: true,
+    translateInto: "Slovak",
   });
   const srcdoc = () => container.querySelector("iframe")?.getAttribute("srcdoc");
 
@@ -279,7 +279,7 @@ it("shows why a translation failed and offers it again", async () => {
   vi.mocked(api.translateMessage).mockRejectedValueOnce(
     new Error("This message has no text to translate."),
   );
-  const { getByLabelText, findByRole } = renderCard({ canTranslate: true });
+  const { getByLabelText, findByRole } = renderCard({ translateInto: "Slovak" });
 
   await fireEvent.click(getByLabelText("Translate this message"));
 
@@ -289,7 +289,7 @@ it("shows why a translation failed and offers it again", async () => {
 
 it("keeps the original's attachments under a translated body", async () => {
   const { getByLabelText, findByText, getByText } = renderCard({
-    canTranslate: true,
+    translateInto: "Slovak",
     body: {
       ...body,
       attachments: [
@@ -309,4 +309,22 @@ it("keeps the original's attachments under a translated body", async () => {
 
   expect(await findByText("Translated")).toBeInTheDocument();
   expect(getByText("rechnung.pdf")).toBeInTheDocument();
+});
+
+it("offers no translation for a message already in the reader's language", () => {
+  const { queryByLabelText } = renderCard({
+    translateInto: "Slovak",
+    body: { ...body, language: "Slovak" },
+  });
+
+  expect(queryByLabelText("Translate this message")).toBeNull();
+});
+
+it("offers translation for a message in another language", () => {
+  const { getByLabelText } = renderCard({
+    translateInto: "Slovak",
+    body: { ...body, language: "German" },
+  });
+
+  expect(getByLabelText("Translate this message")).toBeInTheDocument();
 });
