@@ -486,6 +486,71 @@ mod tests {
         test_engine().unload().await;
     }
 
+    /// Manual probe of in-place translation: `FLIT_PROBE_HTML=<mail.html>
+    /// FLIT_PROBE_LANGUAGE=Slovak FLIT_TEST_MODEL=<model> cargo test
+    /// llm::engine::tests::probe_translation -- --ignored --nocapture`
+    /// prints time and skipped pieces per batch, and writes the rendered
+    /// result next to the input as `<mail.html>.translated.html`.
+    #[tokio::test]
+    #[ignore]
+    async fn probe_translation_of_an_html_mail() {
+        use crate::llm::translate::{batches, max_tokens, parse, prompt, within_cap, ANSWER_START};
+        use crate::mail::{sanitize, translate as markup};
+        let path = std::env::var("FLIT_TEST_MODEL").expect("FLIT_TEST_MODEL not set");
+        let file = std::env::var("FLIT_PROBE_HTML").expect("FLIT_PROBE_HTML not set");
+        let language = std::env::var("FLIT_PROBE_LANGUAGE").unwrap_or("Slovak".to_string());
+        let html = std::fs::read_to_string(&file).unwrap();
+        let texts = markup::segments(&sanitize::sanitize_fragment(&html, &[]));
+        let texts = within_cap(&texts);
+
+        let started = std::time::Instant::now();
+        let mut translations = std::collections::HashMap::new();
+        for range in batches(texts) {
+            let batch: Vec<&str> = texts[range.clone()].iter().map(String::as_str).collect();
+            let chars: usize = batch.iter().map(|t| t.chars().count()).sum();
+            let at = std::time::Instant::now();
+            let answer = test_engine()
+                .complete(Request {
+                    model_path: PathBuf::from(&path),
+                    messages: prompt(&batch, &language),
+                    max_tokens: max_tokens(&batch),
+                    assistant_prefix: format!("<think>\n\n</think>\n\n{ANSWER_START}"),
+                    on_token: None,
+                    cancel: CancelFlag::default(),
+                })
+                .await
+                .unwrap();
+            let parsed = parse(&format!("{ANSWER_START}{answer}"), batch.len());
+            let missing = parsed.iter().filter(|p| p.is_none()).count();
+            eprintln!(
+                "batch {range:?}: {} pieces, {chars} chars, {:.1}s, {missing} skipped",
+                batch.len(),
+                at.elapsed().as_secs_f32()
+            );
+            for (source, translation) in batch.iter().zip(parsed) {
+                if let Some(translation) = translation {
+                    eprintln!("  {source}\n  → {translation}");
+                    translations.insert(source.to_string(), translation);
+                }
+            }
+        }
+        eprintln!(
+            "--- {}/{} pieces in {:.1}s ---",
+            translations.len(),
+            texts.len(),
+            started.elapsed().as_secs_f32()
+        );
+        let doc = sanitize::build_srcdoc(
+            &html,
+            &[],
+            &std::collections::HashMap::new(),
+            false,
+            Some(&translations),
+        );
+        std::fs::write(format!("{file}.translated.html"), doc.html).unwrap();
+        test_engine().unload().await;
+    }
+
     /// Same setup as above; checks that the streamed pieces add up to the
     /// returned answer and that a raised flag stops generation.
     #[tokio::test]
