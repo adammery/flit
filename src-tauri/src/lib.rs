@@ -216,6 +216,7 @@ pub fn run() {
             commands::summarize_message,
             commands::summarize_thread,
             commands::cancel_summary,
+            commands::translate_message,
             commands::cached_summary,
             commands::get_notification_settings,
             commands::set_notification_settings,

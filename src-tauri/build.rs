@@ -90,6 +90,7 @@ const APP_COMMANDS: &[&str] = &[
     "summarize_message",
     "summarize_thread",
     "cancel_summary",
+    "translate_message",
     "cached_summary",
     "get_notification_settings",
     "set_notification_settings",

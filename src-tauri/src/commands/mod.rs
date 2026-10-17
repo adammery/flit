@@ -2665,6 +2665,64 @@ pub async fn cancel_summary(
     Ok(())
 }
 
+/// The message's body with its text translated by the picked local model
+/// into the language picked in Settings → Experimental — the same sanitized
+/// render as get_message_body, its texts swapped (see mail::translate).
+/// Progress goes out as `translation-progress` events tagged with
+/// `request_id`, which cancel_summary also takes. Nothing leaves the machine.
+#[tauri::command]
+pub async fn translate_message(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    message_id: i64,
+    load_remote: Option<bool>,
+    request_id: String,
+) -> Result<MessageBody, AppError> {
+    let language = storage::settings::llm_translate_language(&state.pool).await?;
+    // why check a stored value: the name goes into the prompt word for word.
+    if !llm::translate::valid_language(&language) {
+        return Err(AppError::Invalid(format!(
+            "Pick a translation language in Settings → Experimental (not \"{language}\")."
+        )));
+    }
+    let language = language.trim();
+    let loaded = load_body(&app, &state, message_id).await?;
+    let texts = match (&loaded.html, &loaded.text) {
+        (Some(html), _) => {
+            mail::translate::segments(&mail::sanitize::sanitize_fragment(html, &loaded.images))
+        }
+        (None, Some(text)) => {
+            mail::translate::text_segments(&mail::quote::split_text_quote(text).0)
+        }
+        (None, None) => Vec::new(),
+    };
+    if texts.is_empty() {
+        return Err(AppError::Invalid(
+            "This message has no text to translate.".to_string(),
+        ));
+    }
+    let translations =
+        llm::translate_texts(&app, message_id, &texts, language, &request_id).await?;
+
+    let redundant = quote_repeats_thread(&state.pool, message_id, loaded.text.as_deref()).await?;
+    let mut body = sanitized_body(
+        &state.pool,
+        loaded.html,
+        loaded.text,
+        &loaded.images,
+        load_remote,
+        redundant,
+        Some(&translations),
+    )
+    .await?;
+    body.attachments = storage::messages::attachments(&state.pool, message_id).await?;
+    body.auth = loaded.auth;
+    let own = storage::accounts::own_emails(&state.pool).await?;
+    body.sender_anomaly =
+        storage::contacts::sender_anomaly(&state.pool, &loaded.from, &own).await?;
+    Ok(body)
+}
+
 /// The message's stored text, fetching the body if it is not cached yet.
 async fn summarizable_text(
     app: &AppHandle,

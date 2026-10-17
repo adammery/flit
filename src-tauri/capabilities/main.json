@@ -55,6 +55,7 @@
     "allow-timing-enabled",
     "allow-trash-messages",
     "allow-trash-thread",
+    "allow-translate-message",
     "allow-undo-send",
     "allow-view-status"
   ]
