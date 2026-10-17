@@ -520,7 +520,7 @@ mod tests {
                 })
                 .await
                 .unwrap();
-            let parsed = parse(&format!("{ANSWER_START}{answer}"), batch.len());
+            let parsed = parse(&format!("{ANSWER_START}{answer}"), &batch);
             let missing = parsed.iter().filter(|p| p.is_none()).count();
             eprintln!(
                 "batch {range:?}: {} pieces, {chars} chars, {:.1}s, {missing} skipped",

@@ -110,9 +110,11 @@ pub fn prompt(texts: &[&str], language: &str) -> Vec<ChatMessage> {
 pub const ANSWER_START: &str = "[1] ";
 
 /// The model's answer (with `ANSWER_START` put back in front) read as one
-/// translation per piece; `None` for a piece it skipped. A line without a
-/// number continues the line before it — a model that wrapped a long piece.
-pub fn parse(answer: &str, count: usize) -> Vec<Option<String>> {
+/// translation per piece of `sources`; `None` for a piece it skipped. A
+/// line without a number continues the line before it — a model that
+/// wrapped a long piece.
+pub fn parse(answer: &str, sources: &[&str]) -> Vec<Option<String>> {
+    let count = sources.len();
     let mut found: Vec<Option<String>> = vec![None; count];
     let mut last: Option<usize> = None;
     for line in answer.lines() {
@@ -122,6 +124,7 @@ pub fn parse(answer: &str, count: usize) -> Vec<Option<String>> {
         }
         match numbered(line) {
             Some((n, text)) if (1..=count).contains(&n) && found[n - 1].is_none() => {
+                let text = drop_echoed_number(text, n, sources[n - 1]);
                 if !text.is_empty() {
                     found[n - 1] = Some(text.to_string());
                     last = Some(n - 1);
@@ -137,6 +140,16 @@ pub fn parse(answer: &str, count: usize) -> Vec<Option<String>> {
         }
     }
     found
+}
+
+/// A model now and then numbers a line twice — "[1] 1. Nové trasy…". The
+/// echo goes, unless the piece itself starts that way.
+fn drop_echoed_number<'a>(text: &'a str, n: usize, source: &str) -> &'a str {
+    let echo = format!("{n}. ");
+    match text.strip_prefix(&echo) {
+        Some(rest) if !source.starts_with(&echo) => rest,
+        _ => text,
+    }
 }
 
 /// Pieces of a batch the answer has finished while it is still being
@@ -205,7 +218,7 @@ mod tests {
     fn parse_reads_numbered_lines_and_tolerates_slips() {
         let answer = "[1] Ahoj Anna,\n\n[3]   Ďakujem!\nže si prišla.\n[2]\n[9] navyše\n[1] znova";
         assert_eq!(
-            parse(answer, 3),
+            parse(answer, &["a", "b", "c"]),
             [
                 Some("Ahoj Anna,".to_string()),
                 None,
@@ -231,9 +244,21 @@ mod tests {
     }
 
     #[test]
+    fn a_number_the_model_echoed_goes_unless_the_piece_has_it() {
+        let answer = "[1] 1. Nové trasy\n[2] 2. Krok druhý";
+        assert_eq!(
+            parse(answer, &["Neue Routen", "2. Schritt zwei"]),
+            [
+                Some("Nové trasy".to_string()),
+                Some("2. Krok druhý".to_string())
+            ]
+        );
+    }
+
+    #[test]
     fn a_remark_before_the_list_is_ignored() {
         assert_eq!(
-            parse("Here is the translation:\n[1] Ahoj", 1),
+            parse("Here is the translation:\n[1] Ahoj", &["Hallo"]),
             [Some("Ahoj".to_string())]
         );
     }

@@ -544,7 +544,7 @@ async fn translate_batches(
                 })
                 .await?;
             let answer = format!("{}{answer}", translate::ANSWER_START);
-            for (source, translation) in batch.iter().zip(translate::parse(&answer, batch.len())) {
+            for (source, translation) in batch.iter().zip(translate::parse(&answer, &batch)) {
                 match translation {
                     Some(translation) => {
                         translations.insert(source.to_string(), translation);
