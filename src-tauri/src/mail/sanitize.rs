@@ -274,13 +274,22 @@ pub struct SanitizedBody {
 /// `redundant_quote`: the caller verified this message's quoted history
 /// repeats an earlier message of its conversation — cut it instead of
 /// folding it (the content sits one card up).
+/// `translations`: the reader asked for the message in another language —
+/// its texts replaced by the local model's (see mail::translate).
 pub fn build_srcdoc(
     untrusted_html: &str,
     images: &[InlineImage],
     remote: &HashMap<String, String>,
     redundant_quote: bool,
+    translations: Option<&HashMap<String, String>>,
 ) -> SanitizedBody {
     let (clean, blocked_remote) = sanitize(untrusted_html, images, remote);
+    // Post-sanitize: only the text between the clean fragment's tags
+    // changes, and it goes back escaped — model output never becomes markup.
+    let clean = match translations {
+        Some(translations) => crate::mail::translate::apply(&clean, translations),
+        None => clean,
+    };
     // Post-sanitize, pre-embed: our own constant markup wrapped around the
     // already-clean fragment at element boundaries (see mail::quote).
     let clean = if redundant_quote {
@@ -836,7 +845,7 @@ mod tests {
 
     /// Most tests care only about the document, not the blocked count.
     fn srcdoc(untrusted_html: &str, images: &[InlineImage]) -> String {
-        build_srcdoc(untrusted_html, images, &HashMap::new(), false).html
+        build_srcdoc(untrusted_html, images, &HashMap::new(), false, None).html
     }
 
     #[test]
@@ -950,6 +959,7 @@ mod tests {
             &[],
             &HashMap::new(),
             false,
+            None,
         );
 
         // Both https refs count (each render blocks each occurrence); the
@@ -971,6 +981,7 @@ mod tests {
             &[],
             &remote,
             false,
+            None,
         );
 
         assert!(body
@@ -1194,6 +1205,7 @@ mod tests {
             &[],
             &remote,
             false,
+            None,
         )
         .html;
 
@@ -1251,6 +1263,7 @@ mod tests {
             &[],
             &remote,
             false,
+            None,
         )
         .html;
 
@@ -1280,6 +1293,7 @@ mod tests {
             &[],
             &remote,
             false,
+            None,
         )
         .html;
 
@@ -1344,11 +1358,28 @@ mod tests {
             &[],
             &remote,
             false,
+            None,
         )
         .html;
 
         assert!(doc.contains(r#"background="data:image/png;base64,iVBORw0KGgo=""#));
         assert!(!doc.contains("t.example"));
+    }
+
+    #[test]
+    fn a_translation_replaces_the_sanitized_text_and_stays_text() {
+        let untrusted = r#"<p onclick="x()">Hallo <script>evil()</script>Welt</p>"#;
+        let clean = sanitize_fragment(untrusted, &[]);
+        assert_eq!(crate::mail::translate::segments(&clean), ["Hallo Welt"]);
+
+        let translations = HashMap::from([(
+            "Hallo Welt".to_string(),
+            "<b onclick=x()>Ahoj</b> svet".to_string(),
+        )]);
+        let doc = build_srcdoc(untrusted, &[], &HashMap::new(), false, Some(&translations)).html;
+
+        assert!(doc.contains("<p>&lt;b onclick=x()&gt;Ahoj&lt;/b&gt; svet</p>"));
+        assert!(!doc.contains("Hallo"));
     }
 
     #[test]

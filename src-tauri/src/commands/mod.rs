@@ -1770,6 +1770,7 @@ pub async fn get_message_body(
         &loaded.images,
         load_remote,
         redundant,
+        None,
     )
     .await?;
     // why from the DB, not the parse result: both branches above have already
@@ -2002,6 +2003,7 @@ pub async fn thread_bodies(
             &images,
             None,
             redundant,
+            None,
         )
         .await?;
         body.attachments = storage::messages::attachments(&state.pool, header.id).await?;
@@ -2169,6 +2171,7 @@ async fn sanitized_body(
     images: &[mail::parse::InlineImage],
     load_remote: Option<bool>,
     redundant_quote: bool,
+    translations: Option<&std::collections::HashMap<String, String>>,
 ) -> Result<MessageBody, AppError> {
     let policy = storage::settings::remote_image_policy(pool).await?;
     let load = policy == RemoteImagePolicy::Always
@@ -2183,7 +2186,8 @@ async fn sanitized_body(
             } else {
                 std::collections::HashMap::new()
             };
-            let body = mail::sanitize::build_srcdoc(h, images, &remote, redundant_quote);
+            let body =
+                mail::sanitize::build_srcdoc(h, images, &remote, redundant_quote, translations);
             blocked_images = body.blocked_remote;
             Some(body.html)
         }
@@ -2196,6 +2200,10 @@ async fn sanitized_body(
     let (text, quoted_text) = match text {
         Some(t) => {
             let (own, quoted) = mail::quote::split_text_quote(&t);
+            let own = match translations {
+                Some(translations) => mail::translate::apply_text(&own, translations),
+                None => own,
+            };
             (Some(own), if redundant_quote { None } else { quoted })
         }
         None => (None, None),
