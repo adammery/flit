@@ -68,7 +68,17 @@ async fn log_in<T>(
 where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
 {
-    let client = async_imap::Client::new(stream);
+    let mut client = async_imap::Client::new(stream);
+    // why: async-imap leaves the server's greeting unread. LOGIN never
+    // noticed — it skips untagged lines on its way to the tagged reply — but
+    // AUTHENTICATE takes the greeting for the server's first answer, then
+    // skips the "+" prompt that follows and waits for a reply the server is
+    // itself waiting on us for, until the timeout.
+    client
+        .read_response()
+        .await
+        .map_err(|e| AppError::Imap(format!("greeting: {e}")))?
+        .ok_or_else(|| AppError::Imap("the server closed before its greeting".to_string()))?;
     match credential {
         Credential::Password(password) => client.login(username, password).await,
         Credential::AccessToken(token) => {
@@ -545,6 +555,44 @@ mod tests {
         // A rejected token comes back as a second challenge (a JSON error);
         // the protocol wants an empty reply to it, never the token again.
         assert_eq!(auth.process(br#"{"status":"401"}"#), "");
+    }
+
+    #[tokio::test]
+    async fn a_token_login_answers_the_servers_prompt_after_its_greeting() {
+        use base64::Engine;
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let (client_end, server_end) = tokio::io::duplex(4096);
+        // A server talking like Gmail: greeting first, then an empty "+"
+        // prompt for the SASL response, then the tagged OK.
+        let server = tokio::spawn(async move {
+            let (read, mut write) = tokio::io::split(server_end);
+            let mut lines = BufReader::new(read).lines();
+            write.write_all(b"* OK Gimap ready\r\n").await.unwrap();
+            let command = lines.next_line().await.unwrap().unwrap();
+            let (tag, verb) = command.split_once(' ').unwrap();
+            assert_eq!(verb, "AUTHENTICATE XOAUTH2");
+            write.write_all(b"+ \r\n").await.unwrap();
+            let response = lines.next_line().await.unwrap().unwrap();
+            let reply = format!("{tag} OK jan@gmail.com authenticated (Success)\r\n");
+            write.write_all(reply.as_bytes()).await.unwrap();
+            response
+        });
+
+        let token = Credential::AccessToken("ya29.token".to_string());
+        let login = log_in(client_end, "jan@gmail.com", &token);
+        tokio::time::timeout(Duration::from_secs(5), login)
+            .await
+            .expect("the login hung")
+            .expect("the login failed");
+        let response = server.await.unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(response)
+            .unwrap();
+        assert_eq!(
+            decoded,
+            b"user=jan@gmail.com\x01auth=Bearer ya29.token\x01\x01"
+        );
     }
 
     #[test]
