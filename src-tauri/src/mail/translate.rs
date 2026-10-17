@@ -147,14 +147,40 @@ struct Piece {
     texts: Vec<usize>,
 }
 
+/// Whether a tag hides its element by its own `style` — the usual way of
+/// a preheader, the preview line no reader sees in the body.
+fn hides(raw: &str) -> bool {
+    let compact: String = raw
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    compact.contains("display:none") || compact.contains("visibility:hidden")
+}
+
 /// The pieces of text, in reading order. Quoted history (`<blockquote>`) is
-/// left out: it repeats earlier mail and would double the work.
+/// left out: it repeats earlier mail and would double the work. So is text
+/// hidden by an inline style: nobody reads it, and the model's time is
+/// what a translation costs.
 fn pieces(tokens: &[Token]) -> Vec<Piece> {
     let mut pieces = Vec::new();
     let mut start = 0;
     let mut texts = Vec::new();
     let mut quote_depth = 0usize;
+    // The hidden element's name and how deep inside same-named ones we are.
+    let mut hidden: Option<(&str, usize)> = None;
     for (i, token) in tokens.iter().enumerate() {
+        if let Token::Tag { raw, name, closing } = token {
+            if !VOIDS.contains(&name.as_str()) {
+                hidden = match hidden {
+                    None if !*closing && hides(raw) => Some((name, 1)),
+                    Some((n, depth)) if n == name && !*closing => Some((n, depth + 1)),
+                    Some((n, 1)) if n == name => None,
+                    Some((n, depth)) if n == name => Some((n, depth - 1)),
+                    other => other,
+                };
+            }
+        }
         match token {
             Token::Tag { name, closing, .. } => {
                 if BLOCKS.contains(&name.as_str()) {
@@ -174,7 +200,7 @@ fn pieces(tokens: &[Token]) -> Vec<Piece> {
                     };
                 }
             }
-            Token::Text(_) if quote_depth == 0 => texts.push(i),
+            Token::Text(_) if quote_depth == 0 && hidden.is_none() => texts.push(i),
             Token::Text(_) => {}
         }
     }
@@ -602,6 +628,14 @@ mod tests {
     fn quoted_history_is_left_out() {
         let html = "<p>Danke!</p><blockquote><p>Alte Nachricht</p><blockquote><p>Noch älter</p></blockquote><p>Auch alt</p></blockquote><p>Gruß</p>";
         assert_eq!(segments(html), ["Danke!", "Gruß"]);
+    }
+
+    #[test]
+    fn hidden_text_is_left_out() {
+        let html =
+            "<div style=\"display: none; max-height: 0px\">Vorschau <div>innen</div> auch</div>\
+                    <p>Hallo</p><span style=\"visibility:hidden\">weg</span><p>Welt</p>";
+        assert_eq!(segments(html), ["Hallo", "Welt"]);
     }
 
     #[test]
