@@ -217,6 +217,14 @@ export interface SummaryToken {
   text: string;
 }
 
+/** Mirrors TranslationProgress in models.rs: pieces of a message
+ *  translated so far, out of `total`. */
+export interface TranslationProgress {
+  requestId: string;
+  done: number;
+  total: number;
+}
+
 /** Mirrors LlmDownloadProgress in models.rs. */
 export interface LlmDownloadProgress {
   id: string;
