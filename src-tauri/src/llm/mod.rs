@@ -10,6 +10,7 @@ pub mod download;
 pub mod engine;
 pub mod store;
 pub mod summarize;
+pub mod translate;
 
 use std::collections::HashMap;
 use std::path::Path;
