@@ -2173,33 +2173,73 @@ async fn sanitized_body(
     redundant_quote: bool,
     translations: Option<&std::collections::HashMap<String, String>>,
 ) -> Result<MessageBody, AppError> {
+    let inputs = render_inputs(pool, html.as_deref(), load_remote).await?;
+    Ok(render_body(
+        html.as_deref(),
+        text.as_deref(),
+        images,
+        &inputs,
+        redundant_quote,
+        translations,
+    ))
+}
+
+/// What rendering a body needs besides the message: the remote-image
+/// decision and the images fetched for it. Settled once — it awaits the
+/// settings and maybe the network — so the body can then be rendered again
+/// without waiting, as a translation does after every batch.
+struct RenderInputs {
+    policy: RemoteImagePolicy,
+    load: bool,
+    remote: std::collections::HashMap<String, String>,
+}
+
+async fn render_inputs(
+    pool: &sqlx::SqlitePool,
+    html: Option<&str>,
+    load_remote: Option<bool>,
+) -> Result<RenderInputs, AppError> {
     let policy = storage::settings::remote_image_policy(pool).await?;
     let load = policy == RemoteImagePolicy::Always
         || (policy == RemoteImagePolicy::Ask && load_remote.unwrap_or(false));
-
-    let mut blocked_images = 0;
-    let rendered = match html.as_deref() {
-        Some(h) => {
-            let remote = if load {
-                let urls = mail::sanitize::remote_image_urls(h);
-                mail::remote::load_images(pool, &urls).await
-            } else {
-                std::collections::HashMap::new()
-            };
-            let body =
-                mail::sanitize::build_srcdoc(h, images, &remote, redundant_quote, translations);
-            blocked_images = body.blocked_remote;
-            Some(body.html)
+    let remote = match html {
+        Some(h) if load => {
+            let urls = mail::sanitize::remote_image_urls(h);
+            mail::remote::load_images(pool, &urls).await
         }
-        None => None,
+        _ => std::collections::HashMap::new(),
     };
+    Ok(RenderInputs {
+        policy,
+        load,
+        remote,
+    })
+}
+
+/// The body as the viewer gets it, from settled `inputs` — see
+/// sanitized_body for the rules it keeps.
+fn render_body(
+    html: Option<&str>,
+    text: Option<&str>,
+    images: &[mail::parse::InlineImage],
+    inputs: &RenderInputs,
+    redundant_quote: bool,
+    translations: Option<&std::collections::HashMap<String, String>>,
+) -> MessageBody {
+    let mut blocked_images = 0;
+    let rendered = html.map(|h| {
+        let body =
+            mail::sanitize::build_srcdoc(h, images, &inputs.remote, redundant_quote, translations);
+        blocked_images = body.blocked_remote;
+        body.html
+    });
 
     // Text bodies fold their quoted history on the frontend — split here so
     // the detection lives in one place (mail::quote). A quote the caller
     // verified as repeating an earlier thread message renders nothing.
     let (text, quoted_text) = match text {
         Some(t) => {
-            let (own, quoted) = mail::quote::split_text_quote(&t);
+            let (own, quoted) = mail::quote::split_text_quote(t);
             let own = match translations {
                 Some(translations) => mail::translate::apply_text(&own, translations),
                 None => own,
@@ -2209,19 +2249,21 @@ async fn sanitized_body(
         None => (None, None),
     };
 
-    Ok(MessageBody {
+    MessageBody {
         html: rendered,
         text,
         quoted_text,
         blocked_images,
         // why: !load, not just Ask — after the click the banner disappears
         // even when some images failed to fetch (no endless "load" loop).
-        can_load_remote: policy == RemoteImagePolicy::Ask && !load && blocked_images > 0,
+        can_load_remote: inputs.policy == RemoteImagePolicy::Ask
+            && !inputs.load
+            && blocked_images > 0,
         // Filled by the callers from the DB — sanitization has no say.
         attachments: Vec::new(),
         auth: None,
         sender_anomaly: None,
-    })
+    }
 }
 
 /// Decide how a reopened draft enters the compose window:
