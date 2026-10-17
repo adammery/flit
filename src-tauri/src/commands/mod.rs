@@ -2744,7 +2744,7 @@ pub async fn translate_message(
         ));
     }
     let translations =
-        llm::translate_texts(&app, message_id, &texts, language, &request_id).await?;
+        llm::translate_texts(&app, message_id, &texts, language, &request_id, |_| {}).await?;
 
     let redundant = quote_repeats_thread(&state.pool, message_id, loaded.text.as_deref()).await?;
     let mut body = sanitized_body(

@@ -459,14 +459,17 @@ pub async fn summarize_thread(
 /// `language` with the picked model: source text → translation, for every
 /// piece the model answered. A piece it skipped twice, and everything past
 /// `translate::MAX_CHARS`, stays as it is. Cached like summaries; progress
-/// goes out as `translation-progress` events after every batch, and
-/// cancel_summary stops it under `request_id`.
+/// goes out as `translation-progress` events as pieces finish, cancel_summary
+/// stops it under `request_id`, and `on_batch` gets the translations so far
+/// after every batch — the caller shows the body growing (a cache hit
+/// skips straight to the result).
 pub async fn translate_texts(
     app: &AppHandle,
     message_id: i64,
     texts: &[String],
     language: &str,
     request_id: &str,
+    mut on_batch: impl FnMut(&HashMap<String, String>),
 ) -> Result<HashMap<String, String>, AppError> {
     let state = app.state::<AppState>();
     let picked = ready_model(app, &state.pool, Feature::Translation).await?;
@@ -483,7 +486,16 @@ pub async fn translate_texts(
         }
     }
     let cancel = state.llm_summaries.begin(request_id);
-    let result = translate_batches(app, &picked, texts, language, request_id, &cancel).await;
+    let result = translate_batches(
+        app,
+        &picked,
+        texts,
+        language,
+        request_id,
+        &cancel,
+        &mut on_batch,
+    )
+    .await;
     state.llm_summaries.finish(request_id);
     let translations = result?;
     if let Ok(json) = serde_json::to_string(&translations) {
@@ -501,6 +513,7 @@ async fn translate_batches(
     language: &str,
     request_id: &str,
     cancel: &engine::CancelFlag,
+    on_batch: &mut impl FnMut(&HashMap<String, String>),
 ) -> Result<HashMap<String, String>, AppError> {
     let engine = &app.state::<AppState>().llm_engine;
     let mut translations = HashMap::new();
@@ -553,6 +566,7 @@ async fn translate_batches(
                 }
             }
             emit_translation_progress(app, request_id, translations.len(), texts.len());
+            on_batch(&translations);
         }
         if skipped.is_empty() {
             break;
