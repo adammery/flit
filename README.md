@@ -64,6 +64,9 @@ treats these as rules, not preferences:
 - Experimental: summaries of a message or a whole conversation, written by a
   small language model that runs on your Mac (off by default; the model is a
   separate download you pick and start yourself)
+- Experimental: translation of a message in place — body and subject, links
+  and formatting kept, the original one click away — by the same local model
+  (off by default, its own switch)
 - Light and dark mode
 
 ## Build from source
@@ -107,7 +110,7 @@ Exactly four things, all initiated by you:
 | IMAP / SMTP | sync, send | your mail servers only |
 | Remote images in a message | only if you set the policy to "ask" or "always" | the image hosts, over TLS, no cookies, no referrer, known trackers stripped |
 | Sender favicon lookup | only if you turn it on | the sender's **domain** (never an address), at most once per domain per 30 days, batched at list load so it cannot act as a read receipt |
-| Summary model download | only when you click Download on a model in Settings → Experimental | huggingface.co, over TLS, no cookies, no referrer; one pinned file, verified by SHA-256. Summaries themselves run on your Mac — no message text ever leaves it |
+| Model download (summaries, translation) | only when you click Download on a model in Settings → Experimental | huggingface.co, over TLS, no cookies, no referrer; one pinned file, verified by SHA-256. Summaries and translations themselves run on your Mac — no message text ever leaves it |
 
 Everything else is local. There is no update check either; releases will be
 announced on GitHub.
