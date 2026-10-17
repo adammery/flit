@@ -6,10 +6,12 @@
     saveAttachment,
   } from "./api";
   import { runSummary, type SummaryRun, type SummaryState } from "./summaries";
+  import { runTranslation, type TranslationState } from "./translations";
   import { extColor, fileExt } from "./attachments";
   import { interceptBodyLinks } from "./bodyLinks";
   import { formatFileSize, formatFullDate, senderName } from "./format";
   import SummaryPanel from "./SummaryPanel.svelte";
+  import TranslatePanel from "./TranslatePanel.svelte";
   import type {
     MessageAttachment,
     MessageBody,
@@ -29,6 +31,7 @@
     onDraft,
     onDelete,
     canSummarize = false,
+    canTranslate = false,
   }: {
     message: MessageHeader;
     /** This message's body from the conversation's bulk load; null while
@@ -51,6 +54,9 @@
     /** Offer the local-model summary button (Experimental switch on and a
      * model downloaded). */
     canSummarize?: boolean;
+    /** Offer the local-model translate button (its own Experimental switch
+     * on and a model downloaded). */
+    canTranslate?: boolean;
   } = $props();
 
   // The on-device summary of this card, once asked for. Plain text from
@@ -71,6 +77,31 @@
     summaryRun = null;
     summary = null;
   }
+
+  // The on-device translation of this card, once asked for: the backend's
+  // sanitized body with its texts swapped, shown in the same frame.
+  let translation = $state<TranslationState | null>(null);
+  let showTranslation = $state(true);
+  let translationRun: SummaryRun | null = null;
+
+  function translate() {
+    const id = message.id;
+    translationRun?.cancel();
+    showTranslation = true;
+    translationRun = runTranslation(id, richBody !== null, (state) => {
+      if (message.id === id) translation = state;
+    });
+  }
+
+  function closeTranslation() {
+    translationRun?.cancel();
+    translationRun = null;
+    translation = null;
+  }
+
+  // why: a translation runs for tens of seconds on the GPU — a closed card
+  // must not leave it working for nobody.
+  $effect(() => () => translationRun?.cancel());
 
   // An opened card shows the summary it already has — written earlier in
   // this or another session — without being asked again. One lookup per
@@ -121,7 +152,10 @@
   // The per-message "Load Images" click re-renders richer than the bulk
   // body — it wins over the prop until this card instance dies.
   let richBody = $state<MessageBody | null>(null);
-  let shown = $derived(richBody ?? body);
+  let original = $derived(richBody ?? body);
+  let shown = $derived(
+    showTranslation && translation?.body ? translation.body : original,
+  );
 
   // Folded quoted history of a text body; opens per card, like Gmail's •••.
   let showQuoted = $state(false);
@@ -170,6 +204,9 @@
     try {
       const loaded = await getMessageBody(id, true);
       if (message.id === id) richBody = loaded;
+      // A translation on screen is redone with the images — a cache hit,
+      // so only the render runs again.
+      if (message.id === id && translation?.body) translate();
     } catch (err) {
       if (message.id === id) attachmentError = String(err);
     }
@@ -372,6 +409,15 @@
       class="content"
       onclick={message.isDraft ? onToggle : undefined}
     >
+      {#snippet translateControls()}
+        <TranslatePanel
+          {translation}
+          showing={showTranslation}
+          onStart={translate}
+          onCancel={closeTranslation}
+          onToggle={() => (showTranslation = !showTranslation)}
+        />
+      {/snippet}
       {#if canSummarize}
         <div class="summary-slot">
           <SummaryPanel
@@ -380,7 +426,14 @@
             onStart={() => summarize()}
             onRetry={() => summarize(true)}
             onCancel={cancelSummary}
+            actions={canTranslate ? translateControls : undefined}
           />
+        </div>
+      {:else if canTranslate}
+        <!-- Translation alone: its controls in a row of their own, styled
+             like the summary row they otherwise share. -->
+        <div class="summary-slot translate-row">
+          {@render translateControls()}
         </div>
       {/if}
       {#if shown && shown.attachments.length > 0}
@@ -602,6 +655,15 @@
 <style>
   .summary-slot {
     margin: 0 0 12px;
+  }
+
+  .translate-row {
+    display: flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 2px 0 4px;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 12.5px;
   }
 
   .card {

@@ -14,6 +14,17 @@ vi.mock("./api", () => ({
   onSummaryToken: vi.fn(async () => () => {}),
   cancelSummary: vi.fn(async () => undefined),
   cachedSummary: vi.fn(async () => null),
+  translateMessage: vi.fn(async () => ({
+    html: "<!doctype html><html><body><p>ahoj</p></body></html>",
+    text: "ahoj",
+    quotedText: null,
+    blockedImages: 0,
+    canLoadRemote: false,
+    attachments: [],
+    auth: null,
+    senderAnomaly: null,
+  })),
+  onTranslationProgress: vi.fn(async () => () => {}),
 }));
 
 import * as api from "./api";
@@ -221,4 +232,57 @@ it("shows summary lines as plain text without stray markdown bold", async () => 
   await fireEvent.click(getByLabelText("Summarize this message"));
 
   expect(await findByText("Goal: simplify")).toBeInTheDocument();
+});
+
+it("offers no translate button unless translation is ready", () => {
+  const { queryByLabelText } = renderCard({ canSummarize: true });
+
+  expect(queryByLabelText("Translate this message")).toBeNull();
+});
+
+it("offers translation without summaries", async () => {
+  const { getByLabelText, queryByLabelText } = renderCard({
+    canTranslate: true,
+  });
+
+  expect(queryByLabelText("Summarize this message")).toBeNull();
+  await fireEvent.click(getByLabelText("Translate this message"));
+
+  expect(api.translateMessage).toHaveBeenCalledWith(1, false, "req-1");
+});
+
+it("translates the body in place and flips back to the original", async () => {
+  const { container, getByLabelText, findByText, getByText } = renderCard({
+    canSummarize: true,
+    canTranslate: true,
+  });
+  const srcdoc = () => container.querySelector("iframe")?.getAttribute("srcdoc");
+
+  await fireEvent.click(getByLabelText("Translate this message"));
+
+  expect(api.translateMessage).toHaveBeenCalledWith(1, false, "req-1");
+  expect(await findByText("Translated")).toBeInTheDocument();
+  expect(srcdoc()).toContain("ahoj");
+
+  await fireEvent.click(getByText("Show original"));
+  expect(srcdoc()).toContain("hi there");
+
+  await fireEvent.click(getByText("Show translation"));
+  expect(srcdoc()).toContain("ahoj");
+
+  await fireEvent.click(getByLabelText("Close translation"));
+  expect(srcdoc()).toContain("hi there");
+  expect(getByLabelText("Translate this message")).toBeInTheDocument();
+});
+
+it("shows why a translation failed and offers it again", async () => {
+  vi.mocked(api.translateMessage).mockRejectedValueOnce(
+    new Error("This message has no text to translate."),
+  );
+  const { getByLabelText, findByRole } = renderCard({ canTranslate: true });
+
+  await fireEvent.click(getByLabelText("Translate this message"));
+
+  expect((await findByRole("alert")).textContent).toContain("no text to translate");
+  expect(getByLabelText("Translate this message")).toBeInTheDocument();
 });

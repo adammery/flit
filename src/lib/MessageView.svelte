@@ -23,6 +23,7 @@
     onEditDraft,
     onDeleteDraft,
     canSummarize = false,
+    canTranslate = false,
   }: {
     message: MessageHeader | null;
     /** How many rows the list has selected. Past one there is no single
@@ -46,6 +47,8 @@
     onDeleteDraft?: (message: MessageHeader) => void;
     /** Whether cards offer the on-device summary button. */
     canSummarize?: boolean;
+    /** Whether cards offer the on-device translate button. */
+    canTranslate?: boolean;
   } = $props();
 
   // The whole conversation of the selected row, oldest first. Falls back to
@@ -282,6 +285,7 @@
             message={entry}
             body={bodies[entry.id] ?? null}
             canSummarize={canSummarize && !entry.isDraft}
+            canTranslate={canTranslate && !entry.isDraft}
             loading={bodiesLoading}
             error={bodiesError}
             expanded={entry.isDraft || expandedIds.has(entry.id)}

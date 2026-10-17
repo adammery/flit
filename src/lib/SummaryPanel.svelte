@@ -3,6 +3,7 @@
   // row with a Summarize button until one exists, then the bullet lines
   // (plain text from the backend — never interpreted as HTML), foldable so
   // it stays out of the way once read.
+  import type { Snippet } from "svelte";
   import { isCollapsed, setCollapsed, type SummaryState } from "./summaries";
 
   let {
@@ -13,6 +14,7 @@
     onStart,
     onRetry,
     onCancel,
+    actions,
   }: {
     /** Null until a summary was asked for. */
     summary: SummaryState | null;
@@ -26,6 +28,8 @@
     onRetry: () => void;
     /** Stop a summary still being written (the × while loading). */
     onCancel: () => void;
+    /** More controls for the same row, after the summary's own. */
+    actions?: Snippet;
   } = $props();
 
   let lines = $derived(
@@ -101,6 +105,9 @@
         {/if}
       {/if}
     {/if}
+    {#if actions}
+      <span class="actions">{@render actions()}</span>
+    {/if}
   </div>
   {#if summary === null || (hasText && collapsed)}
     <!-- nothing below the head -->
@@ -133,8 +140,16 @@
   .summary-head {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     min-height: 22px;
+  }
+
+  .actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 6px;
   }
 
   .summary:not(.empty) .summary-head {
