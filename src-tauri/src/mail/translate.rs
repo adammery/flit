@@ -535,6 +535,12 @@ fn trail_space<'a>(token: &Token<'a>) -> &'a str {
     }
 }
 
+/// A subject as a piece of its own; `None` when there is nothing in it to
+/// translate.
+pub fn subject_segment(subject: &str) -> Option<String> {
+    Some(collapse(subject)).filter(|text| worth_translating(text))
+}
+
 /// The paragraphs of a plain-text body (lines up to a blank line, joined),
 /// the pieces of a text mail.
 pub fn text_segments(text: &str) -> Vec<String> {
@@ -780,6 +786,16 @@ mod tests {
             apply(html, &map(&[("Hallo", "Ahoj")])),
             html.replace("Hallo", "Ahoj")
         );
+    }
+
+    #[test]
+    fn a_subject_is_a_piece_when_it_has_words() {
+        assert_eq!(
+            subject_segment("  Re:  Ihre   Bestellung ").as_deref(),
+            Some("Re: Ihre Bestellung")
+        );
+        assert_eq!(subject_segment("#48213 / 12.10."), None);
+        assert_eq!(subject_segment(""), None);
     }
 
     #[test]

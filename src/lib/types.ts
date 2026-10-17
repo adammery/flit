@@ -231,6 +231,8 @@ export interface TranslationProgress {
 export interface TranslatedBody {
   html: string | null;
   text: string | null;
+  /** The subject, translated — null until it is, or when it has no words. */
+  subject: string | null;
 }
 
 /** Mirrors TranslationPartial in models.rs: the body translated so far. */

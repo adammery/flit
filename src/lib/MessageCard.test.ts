@@ -17,6 +17,7 @@ vi.mock("./api", () => ({
   translateMessage: vi.fn(async () => ({
     html: "<!doctype html><html><body><p>ahoj</p></body></html>",
     text: "ahoj",
+    subject: "Víkendové plány",
   })),
   onTranslationProgress: vi.fn(async () => () => {}),
   onTranslationPartial: vi.fn(async () => () => {}),
@@ -247,7 +248,7 @@ it("offers translation without summaries", async () => {
 });
 
 it("translates the body in place and flips back to the original", async () => {
-  const { container, getByLabelText, findByText, getByText } = renderCard({
+  const { container, getByLabelText, findByText, getByText, queryByText } = renderCard({
     canSummarize: true,
     canTranslate: true,
   });
@@ -259,8 +260,11 @@ it("translates the body in place and flips back to the original", async () => {
   expect(await findByText("Translated")).toBeInTheDocument();
   expect(srcdoc()).toContain("ahoj");
 
+  expect(getByText("Víkendové plány")).toBeInTheDocument();
+
   await fireEvent.click(getByText("Show original"));
   expect(srcdoc()).toContain("hi there");
+  expect(queryByText("Víkendové plány")).toBeNull();
 
   await fireEvent.click(getByText("Show translation"));
   expect(srcdoc()).toContain("ahoj");

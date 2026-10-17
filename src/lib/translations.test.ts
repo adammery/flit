@@ -42,7 +42,11 @@ import {
   type TranslationState,
 } from "./translations";
 
-const translated: TranslatedBody = { html: "<p>Ahoj</p>", text: "Ahoj" };
+const translated: TranslatedBody = {
+  html: "<p>Ahoj</p>",
+  text: "Ahoj",
+  subject: "Pozdrav",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -107,7 +111,11 @@ it("shows the body translated so far while the model works", async () => {
   runTranslation(7, false, (state) => states.push(state));
   await settle();
 
-  const half: TranslatedBody = { html: "<p>Ahoj</p><p>Welt</p>", text: null };
+  const half: TranslatedBody = {
+    html: "<p>Ahoj</p><p>Welt</p>",
+    text: null,
+    subject: null,
+  };
   partialListener!({ requestId: "other", body: translated });
   partialListener!({ requestId: "req-1", body: half });
   progressListener!({ requestId: "req-1", done: 20, total: 40 });

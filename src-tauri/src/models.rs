@@ -383,6 +383,8 @@ pub struct TranslationProgress {
 pub struct TranslatedBody {
     pub html: Option<String>,
     pub text: Option<String>,
+    /// The subject, translated — None until it is, or when it has no words.
+    pub subject: Option<String>,
 }
 
 /// Payload of the `translation-partial` event: the body with the pieces

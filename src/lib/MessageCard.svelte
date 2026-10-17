@@ -442,6 +442,10 @@
           {@render translateControls()}
         </div>
       {/if}
+      {#if showTranslation && translation?.body?.subject}
+        <!-- Plain text from the model, rendered as text — never as HTML. -->
+        <p class="translated-subject">{translation.body.subject}</p>
+      {/if}
       {#if shown && shown.attachments.length > 0}
         <div class="atts-label">
           <svg
@@ -661,6 +665,14 @@
 <style>
   .summary-slot {
     margin: 0 0 12px;
+  }
+
+  .translated-subject {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    user-select: text;
   }
 
   .translate-row {

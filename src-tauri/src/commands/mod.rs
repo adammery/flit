@@ -2730,7 +2730,7 @@ pub async fn translate_message(
     }
     let language = language.trim();
     let loaded = load_body(&app, &state, message_id).await?;
-    let texts = match (&loaded.html, &loaded.text) {
+    let mut texts = match (&loaded.html, &loaded.text) {
         (Some(html), _) => {
             mail::translate::segments(&mail::sanitize::sanitize_fragment(html, &loaded.images))
         }
@@ -2743,6 +2743,18 @@ pub async fn translate_message(
         return Err(AppError::Invalid(
             "This message has no text to translate.".to_string(),
         ));
+    }
+
+    // The subject goes first: the reader sees it before the body.
+    let subject = storage::messages::thread_of(&state.pool, message_id)
+        .await?
+        .into_iter()
+        .find(|h| h.id == message_id)
+        .and_then(|h| mail::translate::subject_segment(&h.subject));
+    if let Some(subject) = &subject {
+        if !texts.contains(subject) {
+            texts.insert(0, subject.clone());
+        }
     }
 
     // Settled before the model starts, so every batch re-renders at once.
@@ -2760,6 +2772,7 @@ pub async fn translate_message(
         TranslatedBody {
             html: body.html,
             text: body.text,
+            subject: subject.as_ref().and_then(|s| translations.get(s).cloned()),
         }
     };
     let translations =
