@@ -2097,6 +2097,7 @@ pub async fn save_attachment(
         ))
     })?;
     tokio::fs::write(&path, data).await?;
+    state.note_saved_attachment(attachment_id, path.into());
     Ok(())
 }
 
@@ -2127,8 +2128,47 @@ pub async fn save_all_attachments(
         )
         .await?;
         tokio::fs::write(&path, data).await?;
+        state.note_saved_attachment(meta.id, path);
     }
     Ok(())
+}
+
+/// Open an attachment saved earlier this run in its default app. Opening a
+/// mailed file is safe to hand to the OS: Info.plist's
+/// LSFileQuarantineEnabled marks everything Flit writes, so Gatekeeper
+/// checks an app or script before it first runs.
+#[tauri::command]
+pub async fn open_attachment(
+    state: State<'_, AppState>,
+    attachment_id: i64,
+) -> Result<(), AppError> {
+    let path = saved_file(&state, attachment_id).await?;
+    tauri_plugin_opener::open_path(&path, None::<&str>).map_err(|e| AppError::Open(e.to_string()))
+}
+
+/// Show an attachment saved earlier this run selected in a Finder window.
+#[tauri::command]
+pub async fn reveal_attachment(
+    state: State<'_, AppState>,
+    attachment_id: i64,
+) -> Result<(), AppError> {
+    let path = saved_file(&state, attachment_id).await?;
+    tauri_plugin_opener::reveal_item_in_dir(&path).map_err(|e| AppError::Open(e.to_string()))
+}
+
+/// The file an attachment was saved to this run — refused when it was not
+/// saved, or has since been moved or deleted.
+async fn saved_file(state: &AppState, attachment_id: i64) -> Result<std::path::PathBuf, AppError> {
+    let path = state
+        .saved_attachment(attachment_id)
+        .ok_or_else(|| AppError::Invalid("this attachment has not been saved yet".to_string()))?;
+    if !tokio::fs::try_exists(&path).await? {
+        return Err(AppError::Invalid(format!(
+            "{} is no longer where it was saved",
+            path.display()
+        )));
+    }
+    Ok(path)
 }
 
 /// `dir/name`, with " (n)" inserted before the extension while taken —
@@ -3221,6 +3261,27 @@ mod tests {
         assert_eq!(theme_for(Appearance::System), None);
         assert_eq!(theme_for(Appearance::Light), Some(tauri::Theme::Light));
         assert_eq!(theme_for(Appearance::Dark), Some(tauri::Theme::Dark));
+    }
+
+    #[tokio::test]
+    async fn only_a_file_saved_this_run_and_still_there_is_handed_out() {
+        let state = AppState::new(crate::storage::test_pool().await);
+        let err = saved_file(&state, 1).await.unwrap_err();
+        assert!(err.to_string().contains("not been saved"), "{err}");
+
+        let dir = std::env::temp_dir().join(format!("flit-saved-file-{}", std::process::id()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("invoice.pdf");
+        tokio::fs::write(&path, b"%PDF").await.unwrap();
+        state.note_saved_attachment(1, path.clone());
+        assert_eq!(saved_file(&state, 1).await.unwrap(), path);
+
+        // Moved away or deleted in Finder since: say so instead of failing
+        // somewhere inside the opener.
+        tokio::fs::remove_file(&path).await.unwrap();
+        let err = saved_file(&state, 1).await.unwrap_err();
+        assert!(err.to_string().contains("no longer"), "{err}");
+        let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
     #[tokio::test]

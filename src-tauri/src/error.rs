@@ -36,6 +36,9 @@ pub enum AppError {
     /// changed, or unused too long). Only signing in again fixes it.
     #[error("sign-in expired: sign in to the account again")]
     SignInExpired,
+    /// Finder or the default app could not be asked to show a saved file.
+    #[error("could not open the file: {0}")]
+    Open(String),
     // why: user-fixable input problems (e.g. a schedule time in the past)
     // get their own variant so the message reads as guidance, not a fault.
     #[error("{0}")]

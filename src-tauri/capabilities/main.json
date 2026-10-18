@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "The main window: folder lists, the conversation view, message actions and attachment saving. Every app command is granted by name (build.rs declares them, so anything missing here is refused); core and plugin permissions are only the ones the window uses — event listening, the toolbar's drag region, and the save/open dialogs for attachments.",
+  "description": "The main window: folder lists, the conversation view, message actions and attachment saving, opening and revealing. Every app command is granted by name (build.rs declares them, so anything missing here is refused); core and plugin permissions are only the ones the window uses — event listening, the toolbar's drag region, and the save/open dialogs for attachments.",
   "windows": [
     "main"
   ],
@@ -38,10 +38,12 @@
     "allow-move-messages",
     "allow-move-thread",
     "allow-move-to-trash",
+    "allow-open-attachment",
     "allow-open-compose",
     "allow-open-draft",
     "allow-open-settings",
     "allow-refresh-account",
+    "allow-reveal-attachment",
     "allow-save-all-attachments",
     "allow-save-attachment",
     "allow-search-messages",

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -59,6 +60,14 @@ pub struct AppState {
     pub llm_engine: llm::engine::Engine,
     /// Summaries being written, so a cancel can reach them.
     pub llm_summaries: llm::Summaries,
+    /// Where this run saved each attachment (attachment id → file), so the
+    /// conversation view can offer Open and Show in Finder for exactly
+    /// those files.
+    ///
+    /// why ids and not paths from the frontend: the webview names an
+    /// attachment, never a path, so it can only ever open a file Flit
+    /// itself wrote — not anything else on the disk.
+    saved_attachments: Mutex<HashMap<i64, PathBuf>>,
 }
 
 /// The accounts whose inbox is being synced, and those among them for
@@ -139,6 +148,7 @@ impl AppState {
             llm_downloads: llm::download::Downloads::default(),
             llm_engine: llm::engine::Engine::default(),
             llm_summaries: llm::Summaries::default(),
+            saved_attachments: Mutex::new(HashMap::new()),
         }
     }
 
@@ -269,6 +279,17 @@ impl AppState {
         self.lock_sends().remove(&id)
     }
 
+    /// Remember where an attachment was just saved; a later save of the
+    /// same attachment replaces the earlier spot.
+    pub fn note_saved_attachment(&self, attachment_id: i64, path: PathBuf) {
+        self.lock_saved_attachments().insert(attachment_id, path);
+    }
+
+    /// The file an attachment was last saved to this run, if any.
+    pub fn saved_attachment(&self, attachment_id: i64) -> Option<PathBuf> {
+        self.lock_saved_attachments().get(&attachment_id).cloned()
+    }
+
     // why unwrap_or_else(into_inner): a poisoned lock only means some thread
     // panicked while holding it — the map itself is still coherent, and a
     // compose draft is not worth failing commands over.
@@ -298,6 +319,12 @@ impl AppState {
 
     fn lock_background(&self) -> MutexGuard<'_, HashSet<i64>> {
         self.background
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_saved_attachments(&self) -> MutexGuard<'_, HashMap<i64, PathBuf>> {
+        self.saved_attachments
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -465,6 +492,19 @@ mod tests {
         assert!(!state.full_pass_within(1, 1_060, 60));
         // Per account.
         assert!(!state.full_pass_within(2, 1_000, 60));
+    }
+
+    #[tokio::test]
+    async fn a_saved_attachment_is_remembered_by_id() {
+        let state = AppState::new(test_pool().await);
+        assert!(state.saved_attachment(4).is_none());
+
+        state.note_saved_attachment(4, PathBuf::from("/tmp/a.pdf"));
+        // Saved a second time: the newer file is the one to open.
+        state.note_saved_attachment(4, PathBuf::from("/tmp/b.pdf"));
+
+        assert_eq!(state.saved_attachment(4), Some(PathBuf::from("/tmp/b.pdf")));
+        assert!(state.saved_attachment(5).is_none());
     }
 
     #[tokio::test]

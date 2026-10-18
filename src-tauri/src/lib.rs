@@ -179,6 +179,8 @@ pub fn run() {
             commands::inspect_attachments,
             commands::save_attachment,
             commands::save_all_attachments,
+            commands::open_attachment,
+            commands::reveal_attachment,
             commands::attachment_preview,
             commands::queue_send,
             commands::undo_send,
@@ -351,11 +353,22 @@ mod tests {
         // where it likes; settings has no business sending mail.
         let granted = granted();
         let compose = &granted["compose"];
-        for command in ["save_attachment", "save_all_attachments", "delete_account"] {
+        for command in [
+            "save_attachment",
+            "save_all_attachments",
+            "open_attachment",
+            "reveal_attachment",
+            "delete_account",
+        ] {
             assert!(!compose.contains(command), "compose may {command}");
         }
         let settings = &granted["settings"];
-        for command in ["queue_send", "schedule_send", "save_attachment"] {
+        for command in [
+            "queue_send",
+            "schedule_send",
+            "save_attachment",
+            "open_attachment",
+        ] {
             assert!(!settings.contains(command), "settings may {command}");
         }
     }
