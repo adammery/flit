@@ -53,6 +53,8 @@ treats these as rules, not preferences:
 - Full local mirror of every folder, so startup and browsing are instant
 - Conversation view based on `References`/`In-Reply-To` (no subject guessing)
 - Compose, reply, reply all, forward, with a rich-text editor and attachments
+- Received attachments: save one or all, then open them or show them in
+  Finder; Space previews a focused attachment in Quick Look
 - Drafts synced to the server, signatures per account
 - Send later with a local scheduler; missed sends are never sent silently
 - Read/unread, archive, move between folders, trash, synced back to the server
