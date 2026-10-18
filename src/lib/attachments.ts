@@ -1,4 +1,12 @@
-// File-type presentation for attachment chips in the conversation view.
+// File-type presentation for attachment chips in the conversation view, and
+// which attachments were saved this run.
+
+import { SvelteSet } from "svelte/reactivity";
+
+/** Ids of the attachments saved this run — mirrors what the backend
+ * remembers, so their chips offer Open and Show in Finder. App-wide, so a
+ * conversation opened again still offers them. */
+export const savedAttachments = new SvelteSet<number>();
 
 /** Uppercased extension for the type tile, at most 4 characters so it fits;
  * empty when the filename has none (or is all extension, like dotfiles). */

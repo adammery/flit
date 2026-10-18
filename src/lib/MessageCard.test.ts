@@ -5,8 +5,10 @@ import type { MessageBody, MessageHeader } from "./types";
 
 vi.mock("./api", () => ({
   getMessageBody: vi.fn(async () => ({})),
-  saveAttachment: vi.fn(async () => {}),
-  saveAllAttachments: vi.fn(async () => {}),
+  saveAttachment: vi.fn(async () => true),
+  saveAllAttachments: vi.fn(async () => true),
+  openAttachment: vi.fn(async () => {}),
+  revealAttachment: vi.fn(async () => {}),
   summarizeMessage: vi.fn(
     async () => "- Alice asks about the weekend\n- Reply by Friday",
   ),

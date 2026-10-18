@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import type { MessageBody, MessageHeader } from "./types";
 
@@ -30,8 +30,11 @@ vi.mock("./api", () => ({
     senderAnomaly: null,
     language: null,
   })),
-  saveAttachment: vi.fn(async () => {}),
-  saveAllAttachments: vi.fn(async () => {}),
+  // Resolves true once saved, false when the dialog was cancelled.
+  saveAttachment: vi.fn(async () => true),
+  saveAllAttachments: vi.fn(async () => true),
+  openAttachment: vi.fn(async () => {}),
+  revealAttachment: vi.fn(async () => {}),
   // Default: the conversation is just the selected message (the view falls
   // back to it when the thread comes back empty).
   listThread: vi.fn(async () => []),
@@ -50,6 +53,12 @@ vi.mock("./api", () => ({
 
 import * as api from "./api";
 import MessageView from "./MessageView.svelte";
+import { savedAttachments } from "./attachments";
+
+afterEach(() => {
+  // Saved files are remembered app-wide for the run; each test starts fresh.
+  savedAttachments.clear();
+});
 
 const message: MessageHeader = {
   id: 1,
@@ -285,6 +294,86 @@ it("offers Save All only for multiple attachments", async () => {
 
   await fireEvent.click(await screen.findByRole("button", { name: "Save All" }));
   expect(api.saveAllAttachments).toHaveBeenCalledWith(1);
+});
+
+it("offers to open a saved attachment or show it in Finder", async () => {
+  vi.mocked(api.threadBodies).mockResolvedValueOnce({
+    1: body({ text: "see files", attachments }),
+  });
+  renderView();
+  const chip = await screen.findByRole("button", { name: /report\.pdf/ });
+  expect(
+    screen.queryByRole("button", { name: "Open “report.pdf”" }),
+  ).not.toBeInTheDocument();
+
+  await fireEvent.click(chip);
+
+  await fireEvent.click(
+    await screen.findByRole("button", { name: "Open “report.pdf”" }),
+  );
+  expect(api.openAttachment).toHaveBeenCalledWith(11);
+  await fireEvent.click(
+    screen.getByRole("button", { name: "Show “report.pdf” in Finder" }),
+  );
+  expect(api.revealAttachment).toHaveBeenCalledWith(11);
+  // Only the saved file — the other one still waits to be saved.
+  expect(
+    screen.queryByRole("button", { name: "Open “photo.jpg”" }),
+  ).not.toBeInTheDocument();
+});
+
+it("offers nothing to open when the save dialog was cancelled", async () => {
+  vi.mocked(api.threadBodies).mockResolvedValueOnce({
+    1: body({ text: "see files", attachments }),
+  });
+  vi.mocked(api.saveAttachment).mockResolvedValueOnce(false);
+  renderView();
+
+  await fireEvent.click(
+    await screen.findByRole("button", { name: /report\.pdf/ }),
+  );
+
+  await waitFor(() => expect(api.saveAttachment).toHaveBeenCalled());
+  expect(
+    screen.queryByRole("button", { name: "Open “report.pdf”" }),
+  ).not.toBeInTheDocument();
+});
+
+it("offers to open every attachment after Save All", async () => {
+  vi.mocked(api.threadBodies).mockResolvedValueOnce({
+    1: body({ text: "see files", attachments }),
+  });
+  renderView();
+
+  await fireEvent.click(await screen.findByRole("button", { name: "Save All" }));
+
+  expect(
+    await screen.findByRole("button", { name: "Open “report.pdf”" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Open “photo.jpg”" }),
+  ).toBeInTheDocument();
+});
+
+it("says why a saved attachment could not be opened", async () => {
+  vi.mocked(api.threadBodies).mockResolvedValueOnce({
+    1: body({ text: "see files", attachments }),
+  });
+  vi.mocked(api.openAttachment).mockRejectedValueOnce(
+    "/Users/me/report.pdf is no longer where it was saved",
+  );
+  renderView();
+  await fireEvent.click(
+    await screen.findByRole("button", { name: /report\.pdf/ }),
+  );
+
+  await fireEvent.click(
+    await screen.findByRole("button", { name: "Open “report.pdf”" }),
+  );
+
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "no longer where it was saved",
+  );
 });
 
 it("shows no attachment strip when a message has none", async () => {

@@ -290,26 +290,38 @@ export function setMessagesRead(
 /**
  * Save one received attachment: a native save dialog picks the destination,
  * then the backend re-fetches the message from the server and writes the
- * extracted part there. Resolves without saving when the dialog is
- * cancelled.
+ * extracted part there. Resolves true once saved, false when the dialog
+ * was cancelled.
  */
 export async function saveAttachment(
   attachment: MessageAttachment,
-): Promise<void> {
+): Promise<boolean> {
   const path = await save({ defaultPath: attachment.filename });
-  if (path === null) return;
+  if (path === null) return false;
   await invoke<void>("save_attachment", { attachmentId: attachment.id, path });
+  return true;
 }
 
 /**
  * Save every attachment of a message into a folder picked in a native
- * dialog; one server fetch for all of them. Resolves without saving when
- * the dialog is cancelled.
+ * dialog; one server fetch for all of them. Resolves true once saved, false
+ * when the dialog was cancelled.
  */
-export async function saveAllAttachments(messageId: number): Promise<void> {
+export async function saveAllAttachments(messageId: number): Promise<boolean> {
   const dir = await open({ directory: true, title: "Save Attachments" });
-  if (dir === null) return;
+  if (dir === null) return false;
   await invoke<void>("save_all_attachments", { messageId, dir });
+  return true;
+}
+
+/** Open an attachment saved this run in its default app. */
+export function openAttachment(attachmentId: number): Promise<void> {
+  return invoke<void>("open_attachment", { attachmentId });
+}
+
+/** Show an attachment saved this run selected in Finder. */
+export function revealAttachment(attachmentId: number): Promise<void> {
+  return invoke<void>("reveal_attachment", { attachmentId });
 }
 
 /**

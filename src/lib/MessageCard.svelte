@@ -2,6 +2,8 @@
   import {
     cachedSummary,
     getMessageBody,
+    openAttachment,
+    revealAttachment,
     saveAllAttachments,
     saveAttachment,
   } from "./api";
@@ -11,7 +13,7 @@
     translatedView,
     type TranslationState,
   } from "./translations";
-  import { extColor, fileExt } from "./attachments";
+  import { extColor, fileExt, savedAttachments } from "./attachments";
   import { interceptBodyLinks } from "./bodyLinks";
   import { formatFileSize, formatFullDate, senderName } from "./format";
   import SummaryPanel from "./SummaryPanel.svelte";
@@ -191,12 +193,12 @@
   let savingAttachments = $state(false);
   let attachmentError = $state<string | null>(null);
 
-  async function runSave(action: () => Promise<void>) {
+  async function runSave(action: () => Promise<boolean>, ids: number[]) {
     if (savingAttachments) return;
     savingAttachments = true;
     attachmentError = null;
     try {
-      await action();
+      if (await action()) for (const id of ids) savedAttachments.add(id);
     } catch (err) {
       attachmentError = String(err);
     } finally {
@@ -205,9 +207,23 @@
   }
 
   const saveOne = (attachment: MessageAttachment) =>
-    void runSave(() => saveAttachment(attachment));
-  const saveAll = (messageId: number) =>
-    void runSave(() => saveAllAttachments(messageId));
+    void runSave(() => saveAttachment(attachment), [attachment.id]);
+  const saveAll = (attachments: MessageAttachment[]) =>
+    void runSave(
+      () => saveAllAttachments(message.id),
+      attachments.map((a) => a.id),
+    );
+
+  // Open and Show in Finder hand a file Flit already wrote to the OS — no
+  // fetch, so they stay usable while another save runs.
+  async function useSaved(action: (id: number) => Promise<void>, id: number) {
+    attachmentError = null;
+    try {
+      await action(id);
+    } catch (err) {
+      attachmentError = String(err);
+    }
+  }
 
   // The per-message "Load Images" click (policy "ask"): same body, re-rendered
   // by the backend with remote images fetched and inlined. No spinner — the
@@ -474,39 +490,86 @@
         <div class="atts">
           {#each shown.attachments as attachment (attachment.id)}
             {@const ext = fileExt(attachment.filename)}
-            <button
-              class="att"
-              title="Save “{attachment.filename}”"
-              disabled={savingAttachments}
-              onclick={() => saveOne(attachment)}
-            >
-              <span class="ext" style:background={extColor(ext)}>
-                {ext === "" ? "?" : ext}
-              </span>
-              <span class="att-info">
-                <span class="att-name">{attachment.filename}</span>
-                <span class="att-size">{formatFileSize(attachment.size)}</span>
-              </span>
-              <svg
-                class="down"
-                width="15"
-                height="15"
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.6"
-                aria-hidden="true"
+            {@const saved = savedAttachments.has(attachment.id)}
+            <div class="att">
+              <button
+                class="att-main"
+                title="Save “{attachment.filename}”"
+                disabled={savingAttachments}
+                onclick={() => saveOne(attachment)}
               >
-                <path d="M10 3.5v9m0 0 3.5-3.5M10 12.5 6.5 9" />
-                <path d="M4 15.5h12" />
-              </svg>
-            </button>
+                <span class="ext" style:background={extColor(ext)}>
+                  {ext === "" ? "?" : ext}
+                </span>
+                <span class="att-info">
+                  <span class="att-name">{attachment.filename}</span>
+                  <span class="att-size"
+                    >{formatFileSize(attachment.size)}</span
+                  >
+                </span>
+                {#if !saved}
+                  <svg
+                    class="down"
+                    width="15"
+                    height="15"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    aria-hidden="true"
+                  >
+                    <path d="M10 3.5v9m0 0 3.5-3.5M10 12.5 6.5 9" />
+                    <path d="M4 15.5h12" />
+                  </svg>
+                {/if}
+              </button>
+              {#if saved}
+                <button
+                  class="att-action"
+                  title="Open"
+                  aria-label="Open “{attachment.filename}”"
+                  onclick={() => void useSaved(openAttachment, attachment.id)}
+                >
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    aria-hidden="true"
+                  >
+                    <path d="M11.5 3.5h5v5M16.5 3.5 9.5 10.5" />
+                    <path d="M14.5 11.5v4a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h4" />
+                  </svg>
+                </button>
+                <button
+                  class="att-action"
+                  title="Show in Finder"
+                  aria-label="Show “{attachment.filename}” in Finder"
+                  onclick={() => void useSaved(revealAttachment, attachment.id)}
+                >
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    aria-hidden="true"
+                  >
+                    <circle cx="8.5" cy="8.5" r="5" />
+                    <path d="m12.2 12.2 4.3 4.3" />
+                  </svg>
+                </button>
+              {/if}
+            </div>
           {/each}
           {#if shown.attachments.length > 1}
             <button
               class="att save-all"
               disabled={savingAttachments}
-              onclick={() => saveAll(message.id)}
+              onclick={() => saveAll(shown.attachments)}
             >
               Save All
             </button>
@@ -831,28 +894,68 @@
     margin-top: 8px;
   }
 
+  /* A file chip is a box holding the save button and, once saved, its
+     Open / Show in Finder buttons; Save All is a plain button in the same
+     box style. */
   .att {
     display: flex;
     align-items: center;
-    gap: 9px;
-    max-width: 240px;
-    padding: 8px 12px 8px 9px;
     border: 1px solid var(--card-border);
     border-radius: 8px;
     background: var(--bg-thread);
     font: inherit;
-    text-align: left;
     cursor: pointer;
   }
 
-  .att:hover:not(:disabled) {
+  .att:hover:not(:disabled, :has(.att-main:disabled)) {
     background: var(--bg-hover);
     border-color: var(--card-border-strong);
   }
 
-  .att:disabled {
+  .att:disabled,
+  .att-main:disabled {
     opacity: 0.55;
     cursor: default;
+  }
+
+  .att-main {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    max-width: 240px;
+    min-width: 0;
+    padding: 8px 12px 8px 9px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .att-action {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .att-action:last-child {
+    margin-right: 6px;
+  }
+
+  /* --bg-hover is translucent, so it darkens again on the hovered chip. */
+  .att-action:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 
   .ext {
