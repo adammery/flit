@@ -2078,9 +2078,33 @@ async fn fetch_raw_message(
     raw?.ok_or_else(|| AppError::Imap("message no longer on the server".to_string()))
 }
 
+/// One attachment's bytes, fetched for saving or previewing: its message is
+/// re-fetched from the server and the part re-extracted by index —
+/// attachment bytes never touch the local DB.
+async fn fetch_attachment(
+    state: &AppState,
+    meta: &crate::models::MessageAttachment,
+) -> Result<Vec<u8>, AppError> {
+    let loc = storage::messages::location(&state.pool, meta.message_id).await?;
+    let raw = fetch_raw_message(state, &loc).await?;
+    attachment_bytes(&raw, meta)
+}
+
+/// Extract one attachment from its raw message.
+fn attachment_bytes(
+    raw: &[u8],
+    meta: &crate::models::MessageAttachment,
+) -> Result<Vec<u8>, AppError> {
+    mail::parse::attachment_data(raw, meta.part_index).ok_or_else(|| {
+        AppError::Imap(format!(
+            "attachment {} not found in the message",
+            meta.filename
+        ))
+    })
+}
+
 /// Save one attachment to `path` (a native save-dialog pick, which already
-/// confirmed any overwrite). The bytes are re-fetched from the server and
-/// re-extracted by part index — they never touch the local DB.
+/// confirmed any overwrite).
 #[tauri::command]
 pub async fn save_attachment(
     state: State<'_, AppState>,
@@ -2088,14 +2112,7 @@ pub async fn save_attachment(
     path: String,
 ) -> Result<(), AppError> {
     let meta = storage::messages::attachment(&state.pool, attachment_id).await?;
-    let loc = storage::messages::location(&state.pool, meta.message_id).await?;
-    let raw = fetch_raw_message(&state, &loc).await?;
-    let data = mail::parse::attachment_data(&raw, meta.part_index).ok_or_else(|| {
-        AppError::Imap(format!(
-            "attachment {} not found in the message",
-            meta.filename
-        ))
-    })?;
+    let data = fetch_attachment(&state, &meta).await?;
     tokio::fs::write(&path, data).await?;
     state.note_saved_attachment(attachment_id, path.into());
     Ok(())
@@ -2116,12 +2133,7 @@ pub async fn save_all_attachments(
     let loc = storage::messages::location(&state.pool, message_id).await?;
     let raw = fetch_raw_message(&state, &loc).await?;
     for meta in attachments {
-        let data = mail::parse::attachment_data(&raw, meta.part_index).ok_or_else(|| {
-            AppError::Imap(format!(
-                "attachment {} not found in the message",
-                meta.filename
-            ))
-        })?;
+        let data = attachment_bytes(&raw, &meta)?;
         let path = unique_path(
             std::path::Path::new(&dir),
             &mail::parse::safe_filename(&meta.filename),
