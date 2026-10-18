@@ -35,6 +35,7 @@ vi.mock("./api", () => ({
   saveAllAttachments: vi.fn(async () => true),
   openAttachment: vi.fn(async () => {}),
   revealAttachment: vi.fn(async () => {}),
+  quickLookAttachment: vi.fn(async () => {}),
   // Default: the conversation is just the selected message (the view falls
   // back to it when the thread comes back empty).
   listThread: vi.fn(async () => []),
@@ -373,6 +374,73 @@ it("says why a saved attachment could not be opened", async () => {
 
   expect((await screen.findByRole("alert")).textContent).toContain(
     "no longer where it was saved",
+  );
+});
+
+it("previews a focused attachment on Space instead of saving it", async () => {
+  vi.mocked(api.saveAttachment).mockClear();
+  vi.mocked(api.threadBodies).mockResolvedValueOnce({
+    1: body({ text: "see files", attachments }),
+  });
+  renderView();
+  const chip = await screen.findByRole("button", { name: /report\.pdf/ });
+
+  const event = new KeyboardEvent("keydown", {
+    key: " ",
+    bubbles: true,
+    cancelable: true,
+  });
+  chip.dispatchEvent(event);
+
+  expect(api.quickLookAttachment).toHaveBeenCalledWith(11);
+  // Space must not also press the button, which would open the save dialog.
+  expect(event.defaultPrevented).toBe(true);
+  expect(api.saveAttachment).not.toHaveBeenCalled();
+});
+
+it("leaves Space with a modifier alone", async () => {
+  vi.mocked(api.quickLookAttachment).mockClear();
+  vi.mocked(api.threadBodies).mockResolvedValueOnce({
+    1: body({ text: "see files", attachments }),
+  });
+  renderView();
+  const chip = await screen.findByRole("button", { name: /report\.pdf/ });
+
+  await fireEvent.keyDown(chip, { key: " ", metaKey: true });
+
+  expect(api.quickLookAttachment).not.toHaveBeenCalled();
+});
+
+it("keeps a clicked attachment focused, so Space previews it next", async () => {
+  vi.mocked(api.threadBodies).mockResolvedValueOnce({
+    1: body({ text: "see files", attachments }),
+  });
+  renderView();
+  const chip = await screen.findByRole("button", { name: /report\.pdf/ });
+
+  await fireEvent.click(chip);
+
+  // WebKit does not focus a clicked button by itself, and the save
+  // disables it meanwhile — the focus comes once the save is over.
+  await waitFor(() => expect(document.activeElement).toBe(chip));
+});
+
+it("says why an attachment could not be previewed", async () => {
+  vi.mocked(api.threadBodies).mockResolvedValueOnce({
+    1: body({ text: "see files", attachments }),
+  });
+  vi.mocked(api.quickLookAttachment).mockRejectedValueOnce(
+    "imap error: message no longer on the server",
+  );
+  renderView();
+
+  await fireEvent.keyDown(
+    await screen.findByRole("button", { name: /report\.pdf/ }),
+    { key: " " },
+  );
+
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "no longer on the server",
   );
 });
 

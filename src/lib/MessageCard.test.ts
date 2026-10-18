@@ -9,6 +9,7 @@ vi.mock("./api", () => ({
   saveAllAttachments: vi.fn(async () => true),
   openAttachment: vi.fn(async () => {}),
   revealAttachment: vi.fn(async () => {}),
+  quickLookAttachment: vi.fn(async () => {}),
   summarizeMessage: vi.fn(
     async () => "- Alice asks about the weekend\n- Reply by Friday",
   ),

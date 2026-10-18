@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import {
     cachedSummary,
     getMessageBody,
     openAttachment,
+    quickLookAttachment,
     revealAttachment,
     saveAllAttachments,
     saveAttachment,
@@ -206,13 +208,40 @@
     }
   }
 
-  const saveOne = (attachment: MessageAttachment) =>
-    void runSave(() => saveAttachment(attachment), [attachment.id]);
+  // The clicked chip ends up focused, so Space previews it next. why by
+  // hand, and only once the save is over: WebKit leaves a clicked button
+  // unfocused, and the chips are disabled while a save runs — which takes
+  // focus away from them.
+  async function saveOne(event: MouseEvent, attachment: MessageAttachment) {
+    const chip = event.currentTarget as HTMLButtonElement;
+    await runSave(() => saveAttachment(attachment), [attachment.id]);
+    await tick();
+    chip.focus();
+  }
   const saveAll = (attachments: MessageAttachment[]) =>
     void runSave(
       () => saveAllAttachments(message.id),
       attachments.map((a) => a.id),
     );
+
+  // Space on a focused chip opens Quick Look, as in Finder. An unsaved
+  // attachment is fetched first, so the chip shows it is busy — without
+  // being disabled, which would take its focus away.
+  let lookingUp = $state<number | null>(null);
+
+  function onChipKey(event: KeyboardEvent, attachment: MessageAttachment) {
+    if (event.key !== " ") return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    // why preventDefault: Space would otherwise press the button and open
+    // the save dialog.
+    event.preventDefault();
+    if (lookingUp !== null) return;
+    lookingUp = attachment.id;
+    attachmentError = null;
+    quickLookAttachment(attachment.id)
+      .catch((err) => (attachmentError = String(err)))
+      .finally(() => (lookingUp = null));
+  }
 
   // Open and Show in Finder hand a file Flit already wrote to the OS — no
   // fetch, so they stay usable while another save runs.
@@ -491,12 +520,14 @@
           {#each shown.attachments as attachment (attachment.id)}
             {@const ext = fileExt(attachment.filename)}
             {@const saved = savedAttachments.has(attachment.id)}
-            <div class="att">
+            <div class="att" class:busy={lookingUp === attachment.id}>
               <button
                 class="att-main"
-                title="Save “{attachment.filename}”"
+                title="Save “{attachment.filename}” — Space to preview"
                 disabled={savingAttachments}
-                onclick={() => saveOne(attachment)}
+                aria-busy={lookingUp === attachment.id}
+                onclick={(event) => void saveOne(event, attachment)}
+                onkeydown={(event) => onChipKey(event, attachment)}
               >
                 <span class="ext" style:background={extColor(ext)}>
                   {ext === "" ? "?" : ext}
@@ -916,6 +947,20 @@
   .att-main:disabled {
     opacity: 0.55;
     cursor: default;
+  }
+
+  /* The chip Space would preview — Finder's selected item. */
+  .att:has(.att-main:focus) {
+    border-color: var(--accent);
+  }
+
+  .att-main:focus {
+    outline: none;
+  }
+
+  .att.busy {
+    opacity: 0.55;
+    cursor: progress;
   }
 
   .att-main {

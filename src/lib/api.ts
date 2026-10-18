@@ -319,6 +319,14 @@ export function openAttachment(attachmentId: number): Promise<void> {
   return invoke<void>("open_attachment", { attachmentId });
 }
 
+/**
+ * Quick Look an attachment, as Space does in Finder: its saved file, or a
+ * copy the backend fetches first. Again on the same one closes the panel.
+ */
+export function quickLookAttachment(attachmentId: number): Promise<void> {
+  return invoke<void>("quick_look_attachment", { attachmentId });
+}
+
 /** Show an attachment saved this run selected in Finder. */
 export function revealAttachment(attachmentId: number): Promise<void> {
   return invoke<void>("reveal_attachment", { attachmentId });
