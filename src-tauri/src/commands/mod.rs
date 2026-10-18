@@ -2158,6 +2158,51 @@ pub async fn open_attachment(
     tauri_plugin_opener::open_path(&path, None::<&str>).map_err(|e| AppError::Open(e.to_string()))
 }
 
+/// Quick Look an attachment — Space on its chip, as in Finder. Shows the
+/// file it was saved to, or else a copy fetched into the app cache (cleared
+/// at every launch). Space on the same attachment again closes the panel.
+#[tauri::command]
+pub async fn quick_look_attachment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    attachment_id: i64,
+) -> Result<(), AppError> {
+    let path = quick_look_file(&app, &state, attachment_id).await?;
+    // why the main thread: AppKit windows may only be touched there, and a
+    // command runs on one of the async runtime's worker threads.
+    app.run_on_main_thread(move || {
+        if let Some(mtm) = objc2::MainThreadMarker::new() {
+            crate::quick_look::toggle(mtm, &path);
+        }
+    })?;
+    Ok(())
+}
+
+/// The file Quick Look shows for an attachment: where it was saved, if it
+/// is still there, else its cache copy — fetched on the first look only.
+async fn quick_look_file(
+    app: &AppHandle,
+    state: &AppState,
+    attachment_id: i64,
+) -> Result<std::path::PathBuf, AppError> {
+    if let Some(path) = state.saved_attachment(attachment_id) {
+        if tokio::fs::try_exists(&path).await? {
+            return Ok(path);
+        }
+    }
+    let meta = storage::messages::attachment(&state.pool, attachment_id).await?;
+    let copy = mail::attachments::quick_look_copy(
+        &app.path().app_cache_dir()?,
+        attachment_id,
+        &meta.filename,
+    );
+    if !tokio::fs::try_exists(&copy).await? {
+        let data = fetch_attachment(state, &meta).await?;
+        mail::attachments::write_quick_look_copy(&copy, &data).await?;
+    }
+    Ok(copy)
+}
+
 /// Show an attachment saved earlier this run selected in a Finder window.
 #[tauri::command]
 pub async fn reveal_attachment(

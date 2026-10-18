@@ -54,6 +54,7 @@ const APP_COMMANDS: &[&str] = &[
     "save_attachment",
     "save_all_attachments",
     "open_attachment",
+    "quick_look_attachment",
     "reveal_attachment",
     "attachment_preview",
     "queue_send",

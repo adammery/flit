@@ -7,6 +7,8 @@ pub mod mail;
 mod models;
 mod notify;
 mod poller;
+#[cfg(target_os = "macos")]
+mod quick_look;
 mod scheduler;
 pub mod state;
 pub mod storage;
@@ -63,6 +65,15 @@ pub fn run() {
             });
 
             app.manage(AppState::new(pool));
+
+            // Quick Look copies of attachments are mail content outside the
+            // database — none outlives the run that fetched it.
+            let cache_dir = app.path().app_cache_dir()?;
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = mail::attachments::clear_quick_look_copies(&cache_dir).await {
+                    eprintln!("could not clear Quick Look copies: {err}");
+                }
+            });
 
             // SECURITY (message-body rendering): the main window is built here
             // instead of by tauri.conf.json ("create": false) because only the
@@ -180,6 +191,7 @@ pub fn run() {
             commands::save_attachment,
             commands::save_all_attachments,
             commands::open_attachment,
+            commands::quick_look_attachment,
             commands::reveal_attachment,
             commands::attachment_preview,
             commands::queue_send,
@@ -358,6 +370,7 @@ mod tests {
             "save_all_attachments",
             "open_attachment",
             "reveal_attachment",
+            "quick_look_attachment",
             "delete_account",
         ] {
             assert!(!compose.contains(command), "compose may {command}");

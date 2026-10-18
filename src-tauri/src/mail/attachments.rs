@@ -1,9 +1,46 @@
-//! Metadata for files dropped on the compose window. Only stat calls —
-//! attachment bytes are read later, when the MIME message is built
-//! (mail::smtp).
+//! Attachment files on disk: metadata for files dropped on the compose
+//! window (only stat calls — the bytes are read when the MIME message is
+//! built, mail::smtp), and the copies Quick Look shows of received
+//! attachments that were never saved.
+
+use std::path::{Path, PathBuf};
 
 use crate::error::AppError;
 use crate::models::AttachmentInfo;
+
+/// Where Quick Look's copy of a received attachment lives under the app
+/// cache: a folder per attachment id, so two attachments named alike never
+/// collide, holding the file under its own name — the panel shows that
+/// name as its title.
+pub fn quick_look_copy(cache_dir: &Path, attachment_id: i64, filename: &str) -> PathBuf {
+    cache_dir
+        .join("quick-look")
+        .join(attachment_id.to_string())
+        .join(filename)
+}
+
+/// Write a Quick Look copy. It is written beside its final name and renamed
+/// into place, so a fetch cut off half-way never leaves a truncated file
+/// that a later Space would show as if it were whole.
+pub async fn write_quick_look_copy(path: &Path, data: &[u8]) -> Result<(), AppError> {
+    let dir = path
+        .parent()
+        .ok_or_else(|| AppError::Invalid(format!("{} has no folder", path.display())))?;
+    tokio::fs::create_dir_all(dir).await?;
+    let partial = dir.join(".partial");
+    tokio::fs::write(&partial, data).await?;
+    tokio::fs::rename(&partial, path).await?;
+    Ok(())
+}
+
+/// Delete every Quick Look copy. Runs at launch: they are mail content on
+/// disk outside the database, and must not pile up there.
+pub async fn clear_quick_look_copies(cache_dir: &Path) -> Result<(), AppError> {
+    match tokio::fs::remove_dir_all(cache_dir.join("quick-look")).await {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err.into()),
+        _ => Ok(()),
+    }
+}
 
 /// Stat dropped paths into chip metadata: duplicates collapse (same file
 /// dropped twice attaches once), directories are skipped (a drop of e.g. a
@@ -152,6 +189,54 @@ mod tests {
         let big = vec![0u8; (MAX_PREVIEW_SOURCE_BYTES + 1) as usize];
         let path = temp_file("huge.png", &big);
         assert_eq!(preview(path).await, None);
+    }
+
+    #[test]
+    fn each_attachment_gets_its_own_quick_look_folder() {
+        let cache = std::path::Path::new("/cache");
+
+        let copy = quick_look_copy(cache, 7, "report.pdf");
+
+        // Same name in two messages never collides; the file keeps its
+        // name, which the panel shows as the title.
+        assert_eq!(copy, cache.join("quick-look/7/report.pdf"));
+        assert_ne!(copy, quick_look_copy(cache, 8, "report.pdf"));
+    }
+
+    #[tokio::test]
+    async fn a_quick_look_copy_appears_only_once_complete() {
+        let cache = std::env::temp_dir().join(format!("flit-ql-write-{}", std::process::id()));
+        let copy = quick_look_copy(&cache, 3, "notes.txt");
+
+        write_quick_look_copy(&copy, b"hello").await.unwrap();
+
+        assert_eq!(tokio::fs::read(&copy).await.unwrap(), b"hello");
+        // Nothing but the file itself is left in its folder.
+        let mut entries = tokio::fs::read_dir(copy.parent().unwrap()).await.unwrap();
+        let mut names = Vec::new();
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            names.push(entry.file_name());
+        }
+        assert_eq!(names, ["notes.txt"]);
+        let _ = tokio::fs::remove_dir_all(&cache).await;
+    }
+
+    #[tokio::test]
+    async fn clearing_quick_look_copies_leaves_the_rest_of_the_cache() {
+        let cache = std::env::temp_dir().join(format!("flit-ql-clear-{}", std::process::id()));
+        let copy = quick_look_copy(&cache, 3, "notes.txt");
+        write_quick_look_copy(&copy, b"hello").await.unwrap();
+        tokio::fs::write(cache.join("other"), b"x").await.unwrap();
+
+        clear_quick_look_copies(&cache).await.unwrap();
+
+        assert!(!tokio::fs::try_exists(cache.join("quick-look"))
+            .await
+            .unwrap());
+        assert!(tokio::fs::try_exists(cache.join("other")).await.unwrap());
+        // Nothing to clear (first launch) is fine too.
+        clear_quick_look_copies(&cache).await.unwrap();
+        let _ = tokio::fs::remove_dir_all(&cache).await;
     }
 
     #[tokio::test]
