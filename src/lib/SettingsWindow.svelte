@@ -786,10 +786,10 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
-    border: 1px solid #f0c0c0;
+    border: 1px solid var(--danger-border);
     border-radius: 0.375rem;
-    background: #fdf1f1;
-    color: #8a1f1f;
+    background: var(--danger-bg);
+    color: var(--danger-text);
   }
 
   .error-banner button {

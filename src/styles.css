@@ -13,6 +13,12 @@
   --on-accent: #ffffff;
   /* Errors, destructive actions, failed states. */
   --danger: #d9302c;
+  /* Error banners: a faint danger tint, a matching edge and darker text.
+     why derived: they follow --danger and the window colour into dark mode
+     without a second set of values. */
+  --danger-bg: color-mix(in srgb, var(--danger) 8%, var(--bg-window));
+  --danger-border: color-mix(in srgb, var(--danger) 30%, var(--bg-window));
+  --danger-text: color-mix(in srgb, var(--danger) 70%, var(--text-primary));
   /* Success marks: a sent message, a working connection. */
   --success: #34c759;
   /* Warning text on its translucent amber chip (see the trust banner). */
