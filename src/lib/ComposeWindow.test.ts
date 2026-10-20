@@ -735,6 +735,35 @@ it("keeps replacing the same server draft after an undo hands it back", async ()
   expect(destroyWindow).toHaveBeenCalled();
 });
 
+const sendLaterPanel = () =>
+  screen.queryByRole("dialog", { name: "Send later options" });
+
+it("closes the send-later panel with Escape and refocuses its button", async () => {
+  await renderLoaded();
+  const toggle = screen.getByRole("button", { name: "Send later" });
+
+  await fireEvent.click(toggle);
+  expect(sendLaterPanel()).toBeInTheDocument();
+
+  await fireEvent.keyDown(window, { key: "Escape" });
+  expect(sendLaterPanel()).toBeNull();
+  expect(document.activeElement).toBe(toggle);
+});
+
+it("closes the send-later panel on a press outside it", async () => {
+  await renderLoaded();
+  const toggle = screen.getByRole("button", { name: "Send later" });
+  await fireEvent.click(toggle);
+
+  // Inside the panel, or on the toggle whose own click closes it: stays.
+  await fireEvent.mouseDown(screen.getByLabelText("Send at"));
+  await fireEvent.mouseDown(toggle);
+  expect(sendLaterPanel()).toBeInTheDocument();
+
+  await fireEvent.mouseDown(screen.getByLabelText("Subject"));
+  expect(sendLaterPanel()).toBeNull();
+});
+
 // --- signatures in compose ---
 
 const signatures: Signature[] = [
@@ -840,6 +869,25 @@ it("follows the From account's default until touched by hand", async () => {
   });
   expect(box).toHaveTextContent("— Dominik");
   expect(box).not.toHaveTextContent("Vocalio tím");
+});
+
+it("closes the signature menu with Escape or a press outside it", async () => {
+  await renderWithSignatures();
+  const toggle = screen.getByRole("button", { name: "Signature" });
+  const menu = () => screen.queryByRole("dialog", { name: "Choose signature" });
+
+  await fireEvent.click(toggle);
+  await fireEvent.mouseDown(screen.getByRole("button", { name: "Vocalio" }));
+  await fireEvent.mouseDown(toggle);
+  expect(menu()).toBeInTheDocument();
+
+  await fireEvent.keyDown(window, { key: "Escape" });
+  expect(menu()).toBeNull();
+  expect(document.activeElement).toBe(toggle);
+
+  await fireEvent.click(toggle);
+  await fireEvent.mouseDown(screen.getByLabelText("Subject"));
+  expect(menu()).toBeNull();
 });
 
 it("suggests known contacts in To and turns the pick into a chip", async () => {

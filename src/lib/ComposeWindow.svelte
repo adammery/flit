@@ -114,6 +114,8 @@
   }
 
   let showSignatureMenu = $state(false);
+  let signatureToggle = $state<HTMLButtonElement>();
+  let signatureMenuEl = $state<HTMLElement>();
 
   function pickSignature(sig: Signature | null) {
     signatureTouched = true;
@@ -175,6 +177,8 @@
   /** The send-later popover; presets are computed fresh on every open so a
    * long-lived window never offers a moment that has already passed. */
   let showSendLater = $state(false);
+  let sendLaterToggle = $state<HTMLButtonElement>();
+  let sendLaterEl = $state<HTMLElement>();
   let sendLaterPresets = $state<SendLaterPreset[]>([]);
   let sendAt = $state("");
   let sendAtMin = $state("");
@@ -404,10 +408,37 @@
     formEl?.requestSubmit();
   }
 
+  /** Escape closes whatever floats on top: the close prompt first, then an
+   * open popover, handing focus back to the button that opened it. */
   function onDialogKey(event: KeyboardEvent) {
-    if (!showCloseDialog || event.key !== "Escape") return;
-    event.preventDefault();
-    showCloseDialog = false;
+    if (event.key !== "Escape") return;
+    if (showCloseDialog) {
+      event.preventDefault();
+      showCloseDialog = false;
+    } else if (showSendLater) {
+      event.preventDefault();
+      showSendLater = false;
+      sendLaterToggle?.focus();
+    } else if (showSignatureMenu) {
+      event.preventDefault();
+      showSignatureMenu = false;
+      signatureToggle?.focus();
+    }
+  }
+
+  /** A press anywhere but a popover or its own toggle closes it. why not the
+   * toggle: its click closes the popover itself, and closing it here first
+   * would let that click open it again. */
+  function closePopoversOnOutsidePress(event: MouseEvent) {
+    const target = event.target as Node;
+    const outside = (...els: (HTMLElement | undefined)[]) =>
+      els.every((el) => !el?.contains(target));
+    if (showSendLater && outside(sendLaterEl, sendLaterToggle)) {
+      showSendLater = false;
+    }
+    if (showSignatureMenu && outside(signatureMenuEl, signatureToggle)) {
+      showSignatureMenu = false;
+    }
   }
 
   /** ••• click: the quote moves into the editor and becomes editable —
@@ -523,7 +554,11 @@
 <!-- why capture: the editor binds ⌘↩ to a line break of its own. Catching
      the shortcut on the way down, before it reaches the editor, keeps that
      stray break out of the message being sent. -->
-<svelte:window onkeydown={onDialogKey} onkeydowncapture={onShortcutKey} />
+<svelte:window
+  onkeydown={onDialogKey}
+  onkeydowncapture={onShortcutKey}
+  onmousedown={closePopoversOnOutsidePress}
+/>
 
 <form
   bind:this={formEl}
@@ -541,6 +576,7 @@
       class="icon"
       class:active={showSendLater}
       aria-label="Send later"
+      bind:this={sendLaterToggle}
       title="Send later"
       onclick={toggleSendLater}
       disabled={queueing || accountId === null}
@@ -585,7 +621,12 @@
   {#if showSendLater}
     <!-- Floating panel under the toolbar, Apple Mail's "Send Later" pattern:
          a couple of sensible presets plus an exact date-time picker. -->
-    <div class="send-later" role="dialog" aria-label="Send later options">
+    <div
+      class="send-later"
+      role="dialog"
+      aria-label="Send later options"
+      bind:this={sendLaterEl}
+    >
       {#each sendLaterPresets as preset (preset.label)}
         <button
           type="button"
@@ -677,6 +718,7 @@
         class="sig-toggle"
         class:active={showSignatureMenu}
         aria-label="Signature"
+        bind:this={signatureToggle}
         title="Signature"
         onclick={() => (showSignatureMenu = !showSignatureMenu)}
         disabled={queueing}
@@ -702,6 +744,7 @@
           class="signature-menu"
           role="dialog"
           aria-label="Choose signature"
+          bind:this={signatureMenuEl}
         >
           <button
             type="button"
