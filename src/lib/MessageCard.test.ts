@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import type { MockInstance } from "vitest";
 import { fireEvent, render } from "@testing-library/svelte";
 import MessageCard from "./MessageCard.svelte";
 import type { MessageBody, MessageHeader } from "./types";
@@ -81,8 +82,8 @@ function renderCard(extra: Record<string, unknown> = {}) {
 }
 
 /** Net number of `load` listeners a spied target currently holds. */
-function loadListeners(add: ReturnType<typeof vi.spyOn>, remove: ReturnType<typeof vi.spyOn>) {
-  const count = (spy: ReturnType<typeof vi.spyOn>) =>
+function loadListeners(add: MockInstance, remove: MockInstance) {
+  const count = (spy: MockInstance) =>
     spy.mock.calls.filter(([type]) => type === "load").length;
   return count(add) - count(remove);
 }
