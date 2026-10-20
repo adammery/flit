@@ -412,7 +412,7 @@
   }
 
   .status.ok::before {
-    color: #34c759;
+    color: var(--success);
   }
 
   .status.broken {

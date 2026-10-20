@@ -144,7 +144,7 @@
   }
 
   .check circle {
-    fill: #28a745;
+    fill: var(--success);
   }
 
   .check path {

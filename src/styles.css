@@ -13,6 +13,8 @@
   --on-accent: #ffffff;
   /* Errors, destructive actions, failed states. */
   --danger: #d9302c;
+  /* Success marks: a sent message, a working connection. */
+  --success: #34c759;
   /* Warning text on its translucent amber chip (see the trust banner). */
   --warning: #9c7c10;
 
@@ -55,6 +57,7 @@
   :root {
     --accent: #0a84ff;
     --danger: #ff453a;
+    --success: #30d158;
     --warning: #dcb440;
 
     --bg-window: #1e1e1e;
