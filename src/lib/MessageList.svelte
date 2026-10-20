@@ -416,8 +416,14 @@
       <p class="empty">No Messages</p>
     {:else}
       <!-- Stand-ins for the rows above and below the drawn window, so the
-           scrollbar and the scroll position match the whole list. -->
-      <div class="spacer" style:height={`${visible.padTop}px`}></div>
+           scrollbar and the scroll position match the whole list.
+           role="presentation" here and on .swipe-row: a listbox may only
+           hold options, so every wrapper drops out of the a11y tree. -->
+      <div
+        class="spacer"
+        role="presentation"
+        style:height={`${visible.padTop}px`}
+      ></div>
       {#each windowRows as { message, section, opens } (message.id)}
         {@const color = accountColors[message.accountId] ?? null}
         {@const domain = senderDomain(message.from)}
@@ -435,11 +441,11 @@
                visual landmark. -->
           <div class="section" aria-hidden="true">{section}</div>
         {/if}
-        <!-- svelte-ignore a11y_no_static_element_interactions
-             — the pointer handlers implement the swipe gesture; keyboard
+        <!-- The pointer handlers implement the swipe gesture; keyboard
              users act on rows through the buttons and shortcuts instead. -->
         <div
           class="swipe-row"
+          role="presentation"
           onwheel={(e) => handleWheel(message, e)}
           onpointerdown={(e) => handlePointerDown(message, e)}
           onpointermove={(e) => handlePointerMove(message, e)}
@@ -541,7 +547,11 @@
           </button>
         </div>
       {/each}
-      <div class="spacer" style:height={`${visible.padBottom}px`}></div>
+      <div
+        class="spacer"
+        role="presentation"
+        style:height={`${visible.padBottom}px`}
+      ></div>
     {/if}
   </div>
 

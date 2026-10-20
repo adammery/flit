@@ -287,6 +287,28 @@ it("announces the list as multi-selectable", () => {
   );
 });
 
+it("keeps every option an accessible child of the listbox", () => {
+  renderList();
+  const listbox = screen.getByRole("listbox");
+  // ARIA only lets wrappers between a listbox and its options if they drop
+  // out of the tree, so VoiceOver can count and step through the rows.
+  const transparent = (el: Element) =>
+    el.getAttribute("aria-hidden") === "true" ||
+    ["presentation", "none", "group"].includes(el.getAttribute("role") ?? "");
+
+  for (const child of Array.from(listbox.children)) {
+    if (child.getAttribute("role") === "option") continue;
+    expect(transparent(child), child.outerHTML.slice(0, 80)).toBe(true);
+  }
+  for (const option of screen.getAllByRole("option")) {
+    let el = option.parentElement;
+    while (el && el !== listbox) {
+      expect(transparent(el), el.outerHTML.slice(0, 80)).toBe(true);
+      el = el.parentElement;
+    }
+  }
+});
+
 it("labels the swipe backdrop Move to Inbox for archived rows", async () => {
   renderList({ onArchive: vi.fn(), isArchived: () => true });
 
