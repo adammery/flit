@@ -18,6 +18,20 @@
     return subject === "" ? "(No subject)" : subject;
   }
 
+  let dialog = $state<HTMLElement>();
+
+  // why on mount only: focus lands once when the dialog appears; re-running it
+  // as entries are handled would yank focus back to the top of the list.
+  $effect(() => {
+    dialog?.querySelector("button")?.focus();
+  });
+
+  function onKeydown(event: KeyboardEvent) {
+    if (entries.length === 0 || event.key !== "Escape") return;
+    event.preventDefault();
+    onDismiss();
+  }
+
   function formatWhen(epochSeconds: number): string {
     return new Date(epochSeconds * 1000).toLocaleString(undefined, {
       weekday: "short",
@@ -29,12 +43,21 @@
   }
 </script>
 
+<svelte:window onkeydown={onKeydown} />
+
 {#if entries.length > 0}
   <!-- Scheduled sends whose time passed while the app was off (or asleep).
        Nothing here was sent — the user decides per message. alertdialog:
-       it interrupts on purpose; stale mail leaving unasked would be worse. -->
+       it interrupts on purpose; stale mail leaving unasked would be worse.
+       Escape means "Decide later", the choice that sends nothing. -->
   <div class="backdrop">
-    <div class="dialog" role="alertdialog" aria-label="Missed scheduled messages">
+    <div
+      class="dialog"
+      role="alertdialog"
+      aria-modal="true"
+      aria-label="Missed scheduled messages"
+      bind:this={dialog}
+    >
       <h2>Missed scheduled messages</h2>
       <p class="hint">
         These were due while Flit wasn't running. Nothing has been sent.
