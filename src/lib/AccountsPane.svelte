@@ -358,7 +358,7 @@
   /* The selected account fills with the accent, like the design. */
   .account.active {
     background: var(--accent);
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
 
   /* The account's identity color (the swatch below); gray when unset. */
@@ -594,7 +594,7 @@
 
   .badge.on {
     background: var(--accent);
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
 
   .badge:disabled {

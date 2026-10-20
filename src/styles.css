@@ -11,9 +11,6 @@
   --accent: #007aff;
   /* Text and glyphs sitting on a solid accent or danger fill. */
   --on-accent: #ffffff;
-  /* why the alias: the older name is still used by a few panes — one value,
-     two names, until those usages migrate. */
-  --accent-text: var(--on-accent);
   /* Errors, destructive actions, failed states. */
   --danger: #d9302c;
   /* Warning text on its translucent amber chip (see the trust banner). */

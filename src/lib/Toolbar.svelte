@@ -488,7 +488,7 @@
 
   .menu button:hover {
     background: var(--accent);
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
 
   .search-zone {

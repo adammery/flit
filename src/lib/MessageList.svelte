@@ -805,7 +805,7 @@
 
   button.selected {
     background: var(--accent);
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
 
   /* Unread marker, inline before the sender name. */
@@ -818,7 +818,7 @@
   }
 
   .selected .dot {
-    background: var(--accent-text);
+    background: var(--on-accent);
   }
 
   /* Sender monogram, tinted per domain (see lib/avatar.ts). */
@@ -906,7 +906,7 @@
      switch to the row's own text color on a translucent chip. */
   .selected .draft-pill {
     background: rgb(255 255 255 / 20%);
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
 
   .end .clip {
@@ -915,7 +915,7 @@
   }
 
   .selected .end .clip {
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
 
   /* Conversation size badge, e.g. "3" — a quiet outline, per the design. */
@@ -931,7 +931,7 @@
   }
 
   .selected .thread-count {
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
 
   .date {
@@ -941,7 +941,7 @@
   }
 
   .selected .date {
-    color: var(--accent-text);
+    color: var(--on-accent);
     opacity: 0.85;
   }
 

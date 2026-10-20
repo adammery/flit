@@ -251,7 +251,7 @@
 
   .row.selected {
     background: var(--accent);
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
 
   .list-actions {
@@ -337,7 +337,7 @@
     font: inherit;
     font-size: 12.5px;
     font-weight: 600;
-    color: var(--accent-text);
+    color: var(--on-accent);
     cursor: default;
   }
 
