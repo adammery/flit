@@ -199,13 +199,31 @@
     onSelect(message.id, modeFor(event));
   }
 
+  // The row an open right-click menu belongs to, ringed the way macOS rings
+  // it — only when the selection does not already mark it. A native menu
+  // reports no "dismissed", so the ring lasts until the pointer moves away
+  // from where the click happened, or presses again.
+  let contextId = $state<number | null>(null);
+  let contextAt = { x: 0, y: 0 };
+  /** Pointer travel (px) that counts as moving on rather than jitter. */
+  const RING_SLOP = 4;
+
   // why no selecting here: what the menu acts on — this row, or the
   // selection it belongs to — is the parent's call, and a right-click must
   // not open the row (opening marks it read).
   function handleContextMenu(message: MessageHeader, event: MouseEvent) {
     if (!onContextMenu) return;
     event.preventDefault();
+    contextId = selection.has(message.id) ? null : message.id;
+    contextAt = { x: event.screenX, y: event.screenY };
     onContextMenu(message.id);
+  }
+
+  function dropRingOnMove(event: PointerEvent) {
+    if (contextId === null) return;
+    const dx = event.screenX - contextAt.x;
+    const dy = event.screenY - contextAt.y;
+    if (Math.hypot(dx, dy) > RING_SLOP) contextId = null;
   }
 
   function settleSwipe(message: MessageHeader) {
@@ -366,6 +384,13 @@
   });
 </script>
 
+<!-- why pointerdown clears unconditionally: it fires before the next
+     contextmenu, so a new right-click starts from no ring. -->
+<svelte:window
+  onpointermove={dropRingOnMove}
+  onpointerdown={() => (contextId = null)}
+/>
+
 <div class="pane">
   <header>
     <h1>{title}</h1>
@@ -488,6 +513,7 @@
             aria-selected={selection.has(message.id)}
             data-lead={selectedId === message.id ? "true" : undefined}
             class:selected={selection.has(message.id)}
+            class:context={contextId === message.id}
             class:unread={!message.read}
             class:swiping={offset !== 0}
             style:transform={offset === 0
@@ -833,6 +859,13 @@
   button.selected {
     background: var(--accent);
     color: var(--on-accent);
+  }
+
+  /* The row an open right-click menu acts on (see contextId). Inset, so
+     the neighbouring rows do not cover it. */
+  button.context {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
 
   /* Unread marker, inline before the sender name. */

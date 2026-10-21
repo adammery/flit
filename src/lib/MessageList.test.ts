@@ -271,6 +271,39 @@ it("reports a right-click on a row instead of selecting it", async () => {
   expect(onSelect).not.toHaveBeenCalled();
 });
 
+// why a ring: the menu acts on a row the selection does not mark, and macOS
+// outlines that row so it is clear which one the menu belongs to. A native
+// menu reports no "dismissed", so the ring lasts until the pointer moves on.
+it("rings a right-clicked row outside the selection until the pointer moves on", async () => {
+  renderList({ onContextMenu: vi.fn(), selectedId: 1, selectedIds: [1] });
+  const row = screen.getByRole("option", { name: /Bob/ });
+
+  await fireEvent.contextMenu(row, { screenX: 100, screenY: 100 });
+  expect(row).toHaveClass("context");
+
+  // A pixel of jitter while the menu opens is not moving on.
+  await fireEvent(
+    window,
+    pointer("pointermove", { screenX: 101, screenY: 100 }),
+  );
+  expect(row).toHaveClass("context");
+
+  await fireEvent(
+    window,
+    pointer("pointermove", { screenX: 160, screenY: 140 }),
+  );
+  expect(row).not.toHaveClass("context");
+});
+
+it("does not ring a right-clicked row the selection already marks", async () => {
+  renderList({ onContextMenu: vi.fn(), selectedId: 2, selectedIds: [2] });
+  const row = screen.getByRole("option", { name: /Bob/ });
+
+  await fireEvent.contextMenu(row);
+
+  expect(row).not.toHaveClass("context");
+});
+
 // why: on a Mac ctrl-click is the right-click — the menu opens from the
 // contextmenu event, and the click must not also select or open the row.
 it("leaves a ctrl-click to the right-click menu", async () => {
