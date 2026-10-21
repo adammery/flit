@@ -1688,6 +1688,26 @@ it("archives only the swiped row when it sits outside the selection", async () =
   expect(api.archiveMessages).not.toHaveBeenCalled();
 });
 
+// why: stepping to the neighbour is for the row being read. Swiping away a
+// different row must leave the reading pane alone — opening the neighbour
+// would also mark it read without the user ever looking at it.
+it("keeps the open message when another row is swiped away", async () => {
+  currentMessages = [...allMessages, lunch];
+  render(App);
+  await fireEvent.click(await screen.findByText("Weekend plans"));
+  await screen.findByRole("heading", { name: "Weekend plans" });
+  vi.mocked(api.setMessageRead).mockClear();
+
+  // Lunch? is Re: Invoice's neighbour, and unread.
+  await swipeLeft(screen.getByRole("option", { name: /Re: Invoice/ }));
+
+  expect(api.archiveMessage).toHaveBeenCalledWith(2);
+  expect(
+    screen.getByRole("heading", { name: "Weekend plans" }),
+  ).toBeInTheDocument();
+  expect(api.setMessageRead).not.toHaveBeenCalled();
+});
+
 it("still uses the single-message command for one selected row", async () => {
   render(App);
   const list = within(screen.getByRole("listbox"));

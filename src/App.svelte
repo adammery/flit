@@ -233,9 +233,10 @@
   const pendingEvictions = new Set<number>();
 
   // Optimistically drop a message from the list and run `action` (trash /
-  // archive) on the server, so it feels instant. Selection steps to the
-  // neighbour it leaves behind; a server failure re-queries to bring the
-  // message back rather than leave the list lying.
+  // archive) on the server, so it feels instant. When it was the open
+  // message, selection steps to the neighbour it leaves behind; a server
+  // failure re-queries to bring the message back rather than leave the list
+  // lying.
   function evictMessage(id: number, action: (id: number) => Promise<void>) {
     const next = neighborId(
       messages.map((m) => m.id),
@@ -243,8 +244,12 @@
     );
     pendingEvictions.add(id);
     messages = messages.filter((m) => m.id !== id);
-    if (next === null) selectedMessageId = null;
-    else selectMessage(next);
+    // why only for the open row: a swipe can take away a row the user is
+    // not reading, and stepping would open — and mark read — its neighbour.
+    if (selectedMessageId === id) {
+      if (next === null) selectedMessageId = null;
+      else selectMessage(next);
+    }
     void action(id).then(
       // Success needs no refresh of its own: the backend deleted the row
       // before resolving and emits messages-changed, which refreshes.
