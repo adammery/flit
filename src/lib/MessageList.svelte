@@ -193,6 +193,9 @@
       dragConsumedClick = false;
       return;
     }
+    // why: on a Mac ctrl-click is the right-click — the row menu opens from
+    // the contextmenu event, so the click must not also select the row.
+    if (event.ctrlKey) return;
     onSelect(message.id, modeFor(event));
   }
 

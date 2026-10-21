@@ -18,16 +18,15 @@ export type SelectMode = "replace" | "toggle" | "range";
  * Read a click's modifiers as an intent, so the list maps DOM events and
  * App.svelte maps intents to state — neither has to know the other's half.
  *
- * why ctrl counts as cmd: the keyboard handler already treats the two alike,
- * and the app has no context menu for ctrl-click to collide with.
+ * why ctrl is not read: on a Mac ctrl-click is the right-click, which opens
+ * the row menu instead of touching the selection.
  */
 export function modeFor(event: {
   metaKey: boolean;
-  ctrlKey: boolean;
   shiftKey: boolean;
 }): SelectMode {
   if (event.shiftKey) return "range";
-  if (event.metaKey || event.ctrlKey) return "toggle";
+  if (event.metaKey) return "toggle";
   return "replace";
 }
 

@@ -271,6 +271,19 @@ it("reports a right-click on a row instead of selecting it", async () => {
   expect(onSelect).not.toHaveBeenCalled();
 });
 
+// why: on a Mac ctrl-click is the right-click — the menu opens from the
+// contextmenu event, and the click must not also select or open the row.
+it("leaves a ctrl-click to the right-click menu", async () => {
+  const onSelect = vi.fn();
+  renderList({ onSelect, onContextMenu: vi.fn() });
+
+  await fireEvent.click(screen.getByRole("option", { name: /Bob/ }), {
+    ctrlKey: true,
+  });
+
+  expect(onSelect).not.toHaveBeenCalled();
+});
+
 it("leaves the webview's menu alone when nobody listens for right-clicks", async () => {
   renderList();
   const row = screen.getByRole("option", { name: /Bob/ });

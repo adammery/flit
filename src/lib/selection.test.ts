@@ -10,15 +10,14 @@ import {
 } from "./selection";
 
 describe("modeFor", () => {
-  const plain = { metaKey: false, ctrlKey: false, shiftKey: false };
+  const plain = { metaKey: false, shiftKey: false };
 
   it("reads a bare click as replacing the selection", () => {
     expect(modeFor(plain)).toBe("replace");
   });
 
-  it("reads cmd (and ctrl) as toggling one row", () => {
+  it("reads cmd as toggling one row", () => {
     expect(modeFor({ ...plain, metaKey: true })).toBe("toggle");
-    expect(modeFor({ ...plain, ctrlKey: true })).toBe("toggle");
   });
 
   it("reads shift as extending a range", () => {
