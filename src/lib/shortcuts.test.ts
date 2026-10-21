@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { actionFor, comboFromEvent, firesIn, formatCombo } from "./shortcuts";
+import {
+  acceleratorFor,
+  actionFor,
+  comboFromEvent,
+  firesIn,
+  formatCombo,
+} from "./shortcuts";
 import type { ShortcutBinding } from "./types";
 
 function key(init: KeyboardEventInit): KeyboardEvent {
@@ -85,6 +91,17 @@ describe("formatCombo", () => {
     expect(formatCombo("Meta+Comma")).toBe("⌘,");
     expect(formatCombo("Shift+ArrowDown")).toBe("⇧↓");
     expect(formatCombo("Alt+Space")).toBe("⌥Space");
+  });
+});
+
+describe("acceleratorFor", () => {
+  // Tauri's native menus read "Cmd" where the stored combo says "Meta";
+  // every other modifier and key name they take as is.
+  it("writes a combo the way a native menu item expects it", () => {
+    expect(acceleratorFor("Meta+R")).toBe("Cmd+R");
+    expect(acceleratorFor("Ctrl+Alt+Shift+Meta+A")).toBe("Ctrl+Alt+Shift+Cmd+A");
+    expect(acceleratorFor("Backspace")).toBe("Backspace");
+    expect(acceleratorFor("Meta+Enter")).toBe("Cmd+Enter");
   });
 });
 

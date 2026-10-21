@@ -505,7 +505,7 @@
       ? selectedRows
       : messages.filter((m) => m.id === id);
     if (rows.length === 0) return;
-    const entries = rowMenu(rows, mailboxesByAccount, isArchived);
+    const entries = rowMenu(rows, mailboxesByAccount, isArchived, shortcuts);
     void showContextMenu(entries, (pick) =>
       runMenuPick(id, rows[0], pick),
     ).catch((err: unknown) => console.error("failed to show the menu:", err));

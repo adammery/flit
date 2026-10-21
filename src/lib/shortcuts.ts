@@ -108,6 +108,16 @@ export function formatCombo(combo: string): string {
     .join("");
 }
 
+/** A combo as a native menu item's accelerator: "Shift+Meta+R" →
+ * "Shift+Cmd+R". Tauri's menus take every other modifier and key name the
+ * combo uses as they are. */
+export function acceleratorFor(combo: string): string {
+  return combo
+    .split("+")
+    .map((part) => (part === "Meta" ? "Cmd" : part))
+    .join("+");
+}
+
 /** The action currently bound to `combo`, if any. */
 export function actionFor(
   bindings: ShortcutBinding[],

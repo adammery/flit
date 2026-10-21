@@ -326,7 +326,11 @@ export async function showContextMenu(
         };
       case "item": {
         const { pick } = entry;
-        const item = { id: `row-menu-${next++}`, text: entry.label };
+        const item = {
+          id: `row-menu-${next++}`,
+          text: entry.label,
+          accelerator: entry.accelerator,
+        };
         return pick === null
           ? { ...item, enabled: false }
           : { ...item, action: () => onPick(pick) };

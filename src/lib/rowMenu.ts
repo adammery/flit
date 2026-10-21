@@ -3,7 +3,13 @@
 // per-folder rules are unit-tested without a DOM or a native menu — the same
 // split as selection.ts.
 
-import type { Mailbox, MessageHeader } from "./types";
+import { acceleratorFor } from "./shortcuts";
+import type {
+  Mailbox,
+  MessageHeader,
+  ShortcutAction,
+  ShortcutBinding,
+} from "./types";
 
 /** What picking an item does. App.svelte runs each through the handler its
  * toolbar button, swipe or shortcut already uses. */
@@ -21,28 +27,47 @@ export type MenuPick =
   | { action: "move"; mailbox: string };
 
 export type MenuEntry =
-  /** `pick: null` greys the item out — it is shown, but has nothing to do. */
-  | { kind: "item"; label: string; pick: MenuPick | null }
+  /** `pick: null` greys the item out — it is shown, but has nothing to do.
+   * `accelerator` is the action's keyboard shortcut, as native menus write
+   * it ("Shift+Cmd+R"); absent when the action has none. */
+  | {
+      kind: "item";
+      label: string;
+      pick: MenuPick | null;
+      accelerator?: string;
+    }
   /** Greyed out when it has no items. */
   | { kind: "submenu"; label: string; items: MenuEntry[] }
   | { kind: "separator" };
 
 const SEPARATOR: MenuEntry = { kind: "separator" };
 
-function item(label: string, pick: MenuPick | null): MenuEntry {
-  return { kind: "item", label, pick };
+function item(
+  label: string,
+  pick: MenuPick | null,
+  accelerator?: string,
+): MenuEntry {
+  return accelerator === undefined
+    ? { kind: "item", label, pick }
+    : { kind: "item", label, pick, accelerator };
 }
 
 /**
  * The menu for `rows`: the right-clicked row alone, or the whole selection
  * when the click landed inside it. `isArchived` is App.svelte's own test, so
  * the menu says "Move to Inbox" exactly when the archive action would.
+ * `shortcuts` are the user's bindings, shown beside the actions they fire.
  */
 export function rowMenu(
   rows: MessageHeader[],
   folders: Record<number, Mailbox[]>,
   isArchived: (message: MessageHeader) => boolean,
+  shortcuts: ShortcutBinding[] = [],
 ): MenuEntry[] {
+  const keys = (action: ShortcutAction): string | undefined => {
+    const combo = shortcuts.find((b) => b.action === action)?.combo;
+    return combo ? acceleratorFor(combo) : undefined;
+  };
   const single = rows.length === 1;
   // why one account: folder names belong to an account, and a bulk move
   // sends a single name for every row. null = the rows span accounts.
@@ -70,7 +95,7 @@ export function rowMenu(
       .filter((m) => m.name !== current)
       .map((m) => item(m.displayName, { action: "move", mailbox: m.name })),
   };
-  const trash = item("Move to Trash", { action: "trash" });
+  const trash = item("Move to Trash", { action: "trash" }, keys("trash"));
 
   // A draft is unfinished work: it is edited, not answered, and read state,
   // archiving and junk mean nothing for it.
@@ -87,19 +112,26 @@ export function rowMenu(
   // Unread only once everything is read — the toolbar's rule.
   const allRead = rows.every((row) => row.read);
   return [
-    item("Reply", single ? { action: "reply" } : null),
-    item("Reply All", single ? { action: "reply-all" } : null),
-    item("Forward", single ? { action: "forward" } : null),
+    item("Reply", single ? { action: "reply" } : null, keys("reply")),
+    item(
+      "Reply All",
+      single ? { action: "reply-all" } : null,
+      keys("reply-all"),
+    ),
+    item("Forward", single ? { action: "forward" } : null, keys("forward")),
     SEPARATOR,
-    item(allRead ? "Mark as Unread" : "Mark as Read", {
-      action: "read",
-      read: !allRead,
-    }),
+    item(
+      allRead ? "Mark as Unread" : "Mark as Read",
+      { action: "read", read: !allRead },
+      keys("toggle-read"),
+    ),
     SEPARATOR,
     // App.svelte's archive handler flips an archived row back to the inbox.
-    item(rows.every(isArchived) ? "Move to Inbox" : "Archive", {
-      action: "archive",
-    }),
+    item(
+      rows.every(isArchived) ? "Move to Inbox" : "Archive",
+      { action: "archive" },
+      keys("archive"),
+    ),
     ...junkItems(role, account),
     ...(role === "trash" ? [] : [trash]),
     SEPARATOR,

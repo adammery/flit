@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { rowMenu, type MenuEntry } from "./rowMenu";
-import type { Mailbox, MessageHeader } from "./types";
+import type { Mailbox, MessageHeader, ShortcutBinding } from "./types";
 
 function folder(id: number, name: string, role: string | null): Mailbox {
   return { id, accountId: 1, name, role, displayName: name, unreadCount: 0 };
@@ -221,5 +221,26 @@ describe("rowMenu", () => {
 
     const moveTo = find(entries, "Move to");
     expect(moveTo?.kind === "submenu" && moveTo.items).toHaveLength(7);
+  });
+
+  it("shows the user's shortcut next to the actions that have one", () => {
+    const bindings: ShortcutBinding[] = [
+      { action: "reply", combo: "Meta+R", defaultCombo: "Meta+R" },
+      { action: "toggle-read", combo: "Shift+Meta+U", defaultCombo: "" },
+      { action: "trash", combo: "Backspace", defaultCombo: "Backspace" },
+      // Unbound in Settings: the item shows no shortcut.
+      { action: "archive", combo: null, defaultCombo: "Ctrl+Meta+A" },
+    ];
+    const entries = rowMenu([row()], folders, notArchived, bindings);
+
+    expect(find(entries, "Reply")).toMatchObject({ accelerator: "Cmd+R" });
+    expect(find(entries, "Mark as Read")).toMatchObject({
+      accelerator: "Shift+Cmd+U",
+    });
+    expect(find(entries, "Move to Trash")).toMatchObject({
+      accelerator: "Backspace",
+    });
+    expect(find(entries, "Archive")).not.toHaveProperty("accelerator");
+    expect(find(entries, "Move to Junk")).not.toHaveProperty("accelerator");
   });
 });
