@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "The main window: folder lists, the conversation view, message actions and attachment saving, opening, revealing and Quick Look. Every app command is granted by name (build.rs declares them, so anything missing here is refused); core and plugin permissions are only the ones the window uses — event listening, the toolbar's drag region, and the save/open dialogs for attachments.",
+  "description": "The main window: folder lists, the conversation view, message actions and attachment saving, opening, revealing and Quick Look. Every app command is granted by name (build.rs declares them, so anything missing here is refused); core and plugin permissions are only the ones the window uses — event listening, the toolbar's drag region, the save/open dialogs for attachments, and the message list's native right-click menu (create, pop up, free the previous one).",
   "windows": [
     "main"
   ],
@@ -10,6 +10,9 @@
     "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
     "core:window:allow-internal-toggle-maximize",
+    "core:menu:allow-new",
+    "core:menu:allow-popup",
+    "core:resources:allow-close",
     "dialog:allow-save",
     "dialog:allow-open",
     "allow-archive-message",
