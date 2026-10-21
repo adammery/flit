@@ -39,6 +39,7 @@
     isArchived,
     onTrash,
     onReply,
+    onContextMenu,
     status = null,
     corrections = [],
     onLoadMore,
@@ -68,6 +69,9 @@
     isArchived?: (message: MessageHeader) => boolean;
     onTrash?: (id: number) => void;
     onReply?: (id: number) => void;
+    /** A row was right-clicked; the parent pops up the menu. Omitted, the
+     * webview's own menu shows as before. */
+    onContextMenu?: (id: number) => void;
     /** Whole-view totals + backfill progress; null (e.g. search results)
      * falls back to counting the rows at hand. */
     status?: ViewStatus | null;
@@ -190,6 +194,15 @@
       return;
     }
     onSelect(message.id, modeFor(event));
+  }
+
+  // why no selecting here: what the menu acts on — this row, or the
+  // selection it belongs to — is the parent's call, and a right-click must
+  // not open the row (opening marks it read).
+  function handleContextMenu(message: MessageHeader, event: MouseEvent) {
+    if (!onContextMenu) return;
+    event.preventDefault();
+    onContextMenu(message.id);
   }
 
   function settleSwipe(message: MessageHeader) {
@@ -478,6 +491,7 @@
               ? undefined
               : `translateX(${offset}px)`}
             onclick={(e) => handleClick(message, e)}
+            oncontextmenu={(e) => handleContextMenu(message, e)}
           >
             <!-- aria-hidden: the monogram is a visual shortcut to the sender
                  name, which the row already spells out right beside it. -->

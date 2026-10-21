@@ -256,6 +256,28 @@ it("reports a cmd-click as a toggle and a shift-click as a range", async () => {
   expect(onSelect).toHaveBeenCalledWith(2, "range");
 });
 
+it("reports a right-click on a row instead of selecting it", async () => {
+  const onContextMenu = vi.fn();
+  const onSelect = vi.fn();
+  renderList({ onContextMenu, onSelect });
+  const row = screen.getByRole("option", { name: /Bob/ });
+
+  // fireEvent returns false once a handler called preventDefault — the
+  // webview's own Reload / Inspect menu must not open over ours.
+  const shown = await fireEvent.contextMenu(row);
+
+  expect(shown).toBe(false);
+  expect(onContextMenu).toHaveBeenCalledWith(2);
+  expect(onSelect).not.toHaveBeenCalled();
+});
+
+it("leaves the webview's menu alone when nobody listens for right-clicks", async () => {
+  renderList();
+  const row = screen.getByRole("option", { name: /Bob/ });
+
+  expect(await fireEvent.contextMenu(row)).toBe(true);
+});
+
 it("marks every selected row, not just the lead one", () => {
   renderList({ selectedId: 1, selectedIds: [1, 2] });
 
