@@ -58,6 +58,8 @@ treats these as rules, not preferences:
 - Drafts synced to the server, signatures per account
 - Send later with a local scheduler; missed sends are never sent silently
 - Read/unread, archive, move between folders, trash, synced back to the server
+- A native right-click menu on messages: reply, read state, archive, junk,
+  trash and move, for one message or the whole selection
 - IMAP IDLE push (opt-in) with polling fallback
 - Native macOS notifications
 - Local full-text search across all accounts
