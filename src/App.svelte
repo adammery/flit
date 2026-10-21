@@ -212,7 +212,7 @@
   // list refreshes on its own — here we only fire the command and log a
   // failure (a stale flag heals on the next sync).
   function handleSetRead(id: number, read: boolean) {
-    const ids = bulkIds();
+    const ids = bulkIdsFor(id);
     if (ids) {
       void setMessagesRead(ids, read, selectionIsThreaded).catch(
         (err: unknown) => console.error("failed to set read state:", err),
@@ -275,10 +275,13 @@
     return messages.filter((m) => ids.has(m.id));
   });
 
-  /** A toolbar action covers the selection only once it holds more than one
-   * row; a single row keeps the existing per-message commands. */
-  function bulkIds(): number[] | null {
-    return visibleSelection.ids.length > 1 ? visibleSelection.ids : null;
+  /** An action on row `id` covers the whole selection when the selection
+   * holds more than one row and `id` is one of them. A single row keeps the
+   * existing per-message commands, and so does a row outside the selection:
+   * a swipe aims at the row under the fingers, not at rows picked earlier. */
+  function bulkIdsFor(id: number): number[] | null {
+    const ids = visibleSelection.ids;
+    return ids.length > 1 && ids.includes(id) ? ids : null;
   }
 
   // What a selected row stands for, which is what the backend must expand:
@@ -310,7 +313,7 @@
   }
 
   function handleTrash(id: number) {
-    const ids = bulkIds();
+    const ids = bulkIdsFor(id);
     if (ids) {
       // why read now: evictMessages clears the selection, and the closure
       // would otherwise see an empty one by the time it runs.
@@ -451,7 +454,7 @@
   // Archive flips to unarchive on an already-archived message — re-archiving
   // would be a silent server no-op while the row vanished from the list.
   function handleArchive(id: number) {
-    const ids = bulkIds();
+    const ids = bulkIdsFor(id);
     if (ids) {
       // why every: a selection sitting entirely in its archive folder flips
       // to unarchive, like one row does; a mixed one archives what is left.
@@ -477,7 +480,7 @@
   }
 
   function handleMove(id: number, mailbox: string) {
-    const ids = bulkIds();
+    const ids = bulkIdsFor(id);
     if (ids) {
       const threaded = selectionIsThreaded;
       evictMessages(ids, () => moveMessages(ids, mailbox, threaded));

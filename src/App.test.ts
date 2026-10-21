@@ -1655,6 +1655,39 @@ it("drops every selected row from the list at once", async () => {
   expect(screen.queryByText("Re: Invoice")).not.toBeInTheDocument();
 });
 
+/** A third inbox row, older than the other two, so it lists last. */
+const lunch: MessageHeader = {
+  ...allMessages[0],
+  id: 3,
+  from: "Martin <martin@example.com>",
+  subject: "Lunch?",
+  date: "2026-07-06T11:00:00Z",
+  read: false,
+};
+
+/** A full left swipe on a row — archive, under the default swipe config. */
+async function swipeLeft(row: HTMLElement) {
+  // why fake timers only here: the initial load polls with real ones.
+  vi.useFakeTimers();
+  await fireEvent.wheel(row, { deltaX: 60 });
+  await fireEvent.wheel(row, { deltaX: 60 });
+  await vi.advanceTimersByTimeAsync(200);
+  vi.useRealTimers();
+}
+
+// why: a swipe is aimed at one row — reaching for a selection gathered
+// elsewhere would archive mail the user never touched.
+it("archives only the swiped row when it sits outside the selection", async () => {
+  currentMessages = [...allMessages, lunch];
+  render(App);
+  await selectBoth();
+
+  await swipeLeft(screen.getByRole("option", { name: /Lunch\?/ }));
+
+  expect(api.archiveMessage).toHaveBeenCalledWith(3);
+  expect(api.archiveMessages).not.toHaveBeenCalled();
+});
+
 it("still uses the single-message command for one selected row", async () => {
   render(App);
   const list = within(screen.getByRole("listbox"));
