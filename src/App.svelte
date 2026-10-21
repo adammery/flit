@@ -40,6 +40,7 @@
     openSettings,
     searchMessages,
     sendScheduledNow,
+    showContextMenu,
     setMessageRead,
     setMessagesRead,
     refreshAccount,
@@ -71,6 +72,7 @@
     ViewStatus,
   } from "./lib/types";
   import { actionFor, comboFromEvent, firesIn } from "./lib/shortcuts";
+  import { rowMenu, type MenuPick } from "./lib/rowMenu";
   import { DEFAULT_SWIPE_ACTIONS } from "./lib/swipe";
   import { markPaint, timed } from "./lib/timing";
   import { neighborId, nextMessageId, type NavDelta } from "./lib/messageNav";
@@ -493,6 +495,49 @@
     }
     const move = isThreadRow(id) ? moveThread : moveMessage;
     evictMessage(id, (messageId) => move(messageId, mailbox));
+  }
+
+  // Right-click on a row, by Finder's rule: inside a multi-selection the menu
+  // covers the selection, anywhere else just the clicked row. Neither moves
+  // the selection nor opens the row, so nothing gets marked read.
+  function handleContextMenu(id: number) {
+    const rows = bulkIdsFor(id)
+      ? selectedRows
+      : messages.filter((m) => m.id === id);
+    if (rows.length === 0) return;
+    const entries = rowMenu(rows, mailboxesByAccount, isArchived);
+    void showContextMenu(entries, (pick) =>
+      runMenuPick(id, rows[0], pick),
+    ).catch((err: unknown) => console.error("failed to show the menu:", err));
+  }
+
+  // Each pick goes through the handler its toolbar button, swipe or shortcut
+  // already uses. `id` is the right-clicked row — those handlers widen it to
+  // the selection when it belongs to one; `row` is what a reply answers
+  // (the menu offers replies for a single row only).
+  function runMenuPick(id: number, row: MessageHeader, pick: MenuPick) {
+    switch (pick.action) {
+      case "reply":
+      case "reply-all":
+      case "forward":
+        void openDraftOnLatest(pick.action, row);
+        return;
+      case "edit-draft":
+        editDraft(id);
+        return;
+      case "read":
+        handleSetRead(id, pick.read);
+        return;
+      case "archive":
+        handleArchive(id);
+        return;
+      case "trash":
+        handleTrash(id);
+        return;
+      case "move":
+        handleMove(id, pick.mailbox);
+        return;
+    }
   }
 
   // Keyboard shortcuts — user-configurable in the settings window, reloaded
@@ -1148,6 +1193,7 @@
         {isArchived}
         onTrash={handleTrash}
         onReply={handleSwipeReply}
+        onContextMenu={handleContextMenu}
         status={listStatus}
         corrections={searchCorrections}
         onLoadMore={handleLoadMore}

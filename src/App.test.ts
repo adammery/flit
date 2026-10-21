@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/svelte";
+import type { MenuEntry } from "./lib/rowMenu";
 import type {
   Alias,
   Account,
@@ -278,6 +279,9 @@ vi.mock("./lib/api", () => ({
   openCompose: vi.fn(async () => undefined),
   openDraft: vi.fn(async () => undefined),
   openSettings: vi.fn(async () => undefined),
+  // The native menu can't open in jsdom — tests read the entries it was
+  // given and pick from them (see pickFromMenu).
+  showContextMenu: vi.fn(async () => undefined),
   onAccountsChanged: vi.fn(async (callback: () => void) => {
     accountsChanged = callback;
     return () => {};
@@ -1784,4 +1788,92 @@ it("asks for fresh counts when a read change names rows it cannot see", async ()
 
   await waitFor(() => expect(api.viewStatus).toHaveBeenCalledTimes(1));
   expect(api.listMessages).not.toHaveBeenCalled();
+});
+
+/** Right-click the list row whose subject is `subject`. */
+async function rightClick(subject: string) {
+  const list = within(screen.getByRole("listbox"));
+  await fireEvent.contextMenu(await list.findByText(subject));
+}
+
+/** Choose `label` — top level, or inside a submenu — from the menu the last
+ * right-click popped up, as clicking it in the native menu would. */
+function pickFromMenu(label: string) {
+  const calls = vi.mocked(api.showContextMenu).mock.calls;
+  const [entries, onPick] = calls[calls.length - 1];
+  const all = (list: MenuEntry[]): MenuEntry[] =>
+    list.flatMap((e) => (e.kind === "submenu" ? [e, ...all(e.items)] : [e]));
+  const entry = all(entries).find(
+    (e) => e.kind === "item" && e.label === label,
+  );
+  if (entry?.kind !== "item" || entry.pick === null) {
+    throw new Error(`no enabled "${label}" in the menu`);
+  }
+  onPick(entry.pick);
+}
+
+it("pops up the row menu on right-click without opening the row", async () => {
+  render(App);
+  await rightClick("Weekend plans");
+
+  expect(api.showContextMenu).toHaveBeenCalledTimes(1);
+  // why: opening the row would mark it read — not what a right-click means.
+  expect(screen.getByText("Select a message")).toBeInTheDocument();
+  expect(api.setMessageRead).not.toHaveBeenCalled();
+});
+
+it("acts on the right-clicked row alone and keeps the open message", async () => {
+  render(App);
+  await fireEvent.click(await screen.findByText("Weekend plans"));
+  await screen.findByRole("heading", { name: "Weekend plans" });
+
+  await rightClick("Re: Invoice");
+  pickFromMenu("Archive");
+
+  expect(api.archiveMessage).toHaveBeenCalledWith(2);
+  await waitFor(() =>
+    expect(screen.queryByText("Re: Invoice")).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.getByRole("heading", { name: "Weekend plans" }),
+  ).toBeInTheDocument();
+});
+
+it("covers the whole selection when the right-click lands inside it", async () => {
+  render(App);
+  await selectBoth();
+
+  await rightClick("Re: Invoice");
+  pickFromMenu("Move to Trash");
+
+  expect(api.trashMessages).toHaveBeenCalledWith([1, 2], true);
+});
+
+it("sets the read state of the right-clicked row", async () => {
+  render(App);
+  await rightClick("Weekend plans");
+  pickFromMenu("Mark as Read");
+
+  expect(api.setMessageRead).toHaveBeenCalledWith(1, true);
+});
+
+it("moves the right-clicked row to a folder picked in the menu", async () => {
+  render(App);
+  await rightClick("Weekend plans");
+  // The submenu names folders as the sidebar does; the move uses the
+  // wire name.
+  pickFromMenu("Odoslané");
+
+  expect(api.moveMessage).toHaveBeenCalledWith(1, "[Gmail]/Odoslan&AOk-");
+});
+
+it("opens a quoted reply to the right-clicked row", async () => {
+  render(App);
+  await rightClick("Weekend plans");
+  pickFromMenu("Reply");
+
+  // The reply first resolves the conversation's latest message, then
+  // fetches its quote material.
+  await waitFor(() => expect(api.getMessageQuote).toHaveBeenCalledWith(1));
+  await waitFor(() => expect(api.openCompose).toHaveBeenCalled());
 });

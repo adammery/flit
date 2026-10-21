@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+  Menu,
+  type MenuItemOptions,
+  type PredefinedMenuItemOptions,
+  type SubmenuOptions,
+} from "@tauri-apps/api/menu";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type {
@@ -36,6 +42,7 @@ import type {
   Appearance,
   ViewStatus,
 } from "./types";
+import type { MenuEntry, MenuPick } from "./rowMenu";
 
 export function listAccounts(): Promise<Account[]> {
   return invoke<Account[]>("list_accounts");
@@ -285,6 +292,54 @@ export function setMessagesRead(
   threads: boolean,
 ): Promise<void> {
   return invoke<void>("set_messages_read", { messageIds, read, threads });
+}
+
+// The menu showContextMenu popped up last. A native menu lives in the
+// backend's resource table until it is closed, and popup() resolves as soon
+// as the menu shows — there is no "dismissed" to wait for. Freeing the
+// previous menu when the next one opens keeps at most one alive.
+let lastMenu: Menu | null = null;
+
+/**
+ * Pop a native context menu up at the mouse. Choosing an item runs `onPick`
+ * with its pick; dismissing the menu runs nothing. Resolves once it shows.
+ */
+export async function showContextMenu(
+  entries: MenuEntry[],
+  onPick: (pick: MenuPick) => void,
+): Promise<void> {
+  // why numbered ids: the backend keeps one callback per item id and never
+  // drops it. Generated ids would add a handful with every right-click;
+  // the same numbers each time just overwrite the previous menu's.
+  let next = 0;
+  const toNative = (
+    entry: MenuEntry,
+  ): MenuItemOptions | SubmenuOptions | PredefinedMenuItemOptions => {
+    switch (entry.kind) {
+      case "separator":
+        return { item: "Separator" };
+      case "submenu":
+        return {
+          text: entry.label,
+          enabled: entry.items.length > 0,
+          items: entry.items.map(toNative),
+        };
+      case "item": {
+        const { pick } = entry;
+        const item = { id: `row-menu-${next++}`, text: entry.label };
+        return pick === null
+          ? { ...item, enabled: false }
+          : { ...item, action: () => onPick(pick) };
+      }
+    }
+  };
+  const menu = await Menu.new({ id: "row-menu", items: entries.map(toNative) });
+  // why not awaited: freeing the old menu must not delay the new one.
+  lastMenu
+    ?.close()
+    .catch((err: unknown) => console.error("failed to free a menu:", err));
+  lastMenu = menu;
+  await menu.popup();
 }
 
 /**
