@@ -8,7 +8,7 @@
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use base64::Engine as _;
@@ -30,6 +30,12 @@ const BODY_CSP: &str = "default-src 'none'; img-src data:; style-src 'unsafe-inl
 // this document, so it must never scroll vertically itself — a bar (even a
 // few px of rounding) would steal wheel events from the conversation column.
 // Horizontal stays scrollable for wide fixed-width mail content.
+// why dark mode only under html.flit-adapt: mail is designed on white, and a
+// sender's own colours (black text, a white table) would vanish on a dark
+// canvas — so only a body that sets none of its own (`paints` in sanitize)
+// follows the app into dark mode, Apple Mail style. #232325 is the dark
+// --bg-card in styles.css, so the body sits seamlessly in its card. Light
+// mode paints nothing on html: the frame's own white shows through, as ever.
 const BODY_STYLE: &str = "html{overflow-y:hidden}\
      body{font-family:system-ui,sans-serif;font-size:0.875rem;color:#1a1a1a;\
      margin:0.5rem;word-wrap:break-word}img{max-width:100%}\
@@ -37,7 +43,11 @@ const BODY_STYLE: &str = "html{overflow-y:hidden}\
      details.flit-quote>summary{list-style:none;display:inline-block;padding:1px 9px;\
      border-radius:9px;background:#e8e8ea;color:#5a5a60;font-size:0.7rem;\
      letter-spacing:0.1em;cursor:pointer;user-select:none}\
-     details.flit-quote>summary::-webkit-details-marker{display:none}";
+     details.flit-quote>summary::-webkit-details-marker{display:none}\
+     @media (prefers-color-scheme:dark){html.flit-adapt{background:#232325;color-scheme:dark}\
+     html.flit-adapt body{color:#e5e5e7}html.flit-adapt a{color:#0a84ff}\
+     html.flit-adapt details.flit-quote>summary{background:rgba(255,255,255,0.1);\
+     color:#98989d}}";
 
 /// CSS properties permitted inside `style` attributes. ammonia's
 /// `filter_style_properties` normalises every value and drops invalid
@@ -283,7 +293,7 @@ pub fn build_srcdoc(
     redundant_quote: bool,
     translations: Option<&HashMap<String, String>>,
 ) -> SanitizedBody {
-    let (clean, blocked_remote) = sanitize(untrusted_html, images, remote);
+    let (clean, blocked_remote, own_colors) = sanitize(untrusted_html, images, remote);
     // Post-sanitize: only the text between the clean fragment's tags
     // changes, and it goes back escaped — model output never becomes markup.
     let clean = match translations {
@@ -303,6 +313,11 @@ pub fn build_srcdoc(
     // base. The css module returns text already safe to embed here.
     let message_css =
         crate::mail::css::sanitize_style_blocks(untrusted_html, &style_property_set());
+    let html_open = if own_colors || mentions_color(&message_css) {
+        "<html>"
+    } else {
+        "<html class=\"flit-adapt\">"
+    };
     // `<base target="_blank">`: link clicks must leave the app entirely, and
     // no script (not even the parent's listeners) runs inside the sandboxed
     // frame on WebKit. Aiming every link at a new window turns the click into
@@ -310,7 +325,7 @@ pub fn build_srcdoc(
     // default browser — see the on_new_window handler in lib.rs.
     SanitizedBody {
         html: format!(
-            "<!doctype html><html><head>\
+            "<!doctype html>{html_open}<head>\
              <meta charset=\"utf-8\">\
              <meta http-equiv=\"Content-Security-Policy\" content=\"{BODY_CSP}\">\
              <base target=\"_blank\">\
@@ -331,11 +346,19 @@ pub fn sanitize_fragment(untrusted_html: &str, images: &[InlineImage]) -> String
     sanitize(untrusted_html, images, &HashMap::new()).0
 }
 
+/// `bgcolor` and every `*-color` property contain "color"; `background`
+/// covers the shorthand and `background-image`. A false positive (a
+/// `border-color`, say) only keeps the light rendering.
+fn mentions_color(css: &str) -> bool {
+    let lower = css.to_ascii_lowercase();
+    lower.contains("color") || lower.contains("background")
+}
+
 fn sanitize(
     untrusted_html: &str,
     images: &[InlineImage],
     remote: &HashMap<String, String>,
-) -> (String, usize) {
+) -> (String, usize, bool) {
     // why: owned/cloned data moved into the closure — ammonia's
     // attribute_filter demands 'static, so it can't borrow the arguments.
     let data_uris: HashMap<String, String> = images
@@ -349,6 +372,12 @@ fn sanitize(
     // Send + Sync, so the closure can only mutate through one. Owned by the
     // closure (moved in) — nothing reads it afterwards.
     let inlined = AtomicUsize::new(0);
+    // Whether the sender sets any colour of their own (decides dark mode,
+    // see BODY_STYLE). Judged per attribute here rather than on the output,
+    // so body text — or base64 image data — that happens to spell "color"
+    // never counts.
+    let paints = Arc::new(AtomicBool::new(false));
+    let painted = Arc::clone(&paints);
     let untrusted_html = rename_foreign_named_tags(untrusted_html);
 
     let html = ammonia::Builder::default()
@@ -432,6 +461,11 @@ fn sanitize(
             &["width", "height", "align", "border", "hspace", "vspace"],
         )
         .attribute_filter(move |element, attribute, value| {
+            if matches!(attribute, "color" | "bgcolor" | "background")
+                || (attribute == "style" && mentions_color(value))
+            {
+                painted.store(true, Ordering::Relaxed);
+            }
             let is_img_src = element == "img" && attribute == "src";
             let is_background_attr =
                 attribute == "background" && matches!(element, "table" | "tr" | "td" | "th");
@@ -463,7 +497,7 @@ fn sanitize(
         .to_string();
 
     let blocked = blocked.load(Ordering::Relaxed);
-    (html, blocked)
+    (html, blocked, paints.load(Ordering::Relaxed))
 }
 
 /// Tag names ammonia treats as SVG/MathML elements when checking for
@@ -951,6 +985,42 @@ mod tests {
         assert!(!doc.contains("<form"));
     }
 
+    const ADAPTS: &str = r#"<html class="flit-adapt">"#;
+
+    #[test]
+    fn colorless_body_adapts_to_dark_mode() {
+        let doc = srcdoc(
+            r#"<p>Dear Adam,</p><p>Talk about color: and background: here.</p>
+               <a href="https://example.com/">link</a><img src="cid:logo">"#,
+            &[png("logo")],
+        );
+
+        // Text that merely mentions colour is not a colour the sender set.
+        assert!(doc.contains(ADAPTS));
+    }
+
+    #[test]
+    fn body_that_sets_its_own_colors_stays_light() {
+        for colored in [
+            r#"<p style="color:#000000">black text</p>"#,
+            r#"<table><tr><td style="background-color:white">cell</td></tr></table>"#,
+            r#"<div style="background:#fafafa">box</div>"#,
+            r##"<table bgcolor="#eeeeee"><tr><td>x</td></tr></table>"##,
+            r#"<font color="red">red</font>"#,
+            "<style>p { color: #333333 }</style><p>styled</p>",
+        ] {
+            let doc = srcdoc(colored, &[]);
+            assert!(!doc.contains(ADAPTS), "adapted: {colored}");
+        }
+    }
+
+    #[test]
+    fn dark_mode_styles_only_the_adapted_document() {
+        let doc = srcdoc("<p>hi</p>", &[]);
+
+        assert!(doc.contains("@media (prefers-color-scheme:dark){html.flit-adapt{"));
+    }
+
     #[test]
     fn counts_loadable_remote_images_left_blocked() {
         let body = build_srcdoc(
@@ -1039,7 +1109,7 @@ mod tests {
         let one_copy = data_uri(&big).len();
         let html = r#"<img src="cid:big">"#.repeat(40);
 
-        let (doc, _) = sanitize(&html, &[big], &HashMap::new());
+        let (doc, _, _) = sanitize(&html, &[big], &HashMap::new());
 
         let copies = doc.matches("data:image/png;base64,").count();
         assert_eq!(copies, MAX_INLINED_BYTES / one_copy);
@@ -1057,7 +1127,7 @@ mod tests {
         remote.insert("https://a.example/x.png".to_string(), huge);
         let html = r#"<img src="https://a.example/x.png">"#.repeat(5);
 
-        let (doc, blocked) = sanitize(&html, &[], &remote);
+        let (doc, blocked, _) = sanitize(&html, &[], &remote);
 
         assert_eq!(doc.matches("data:image/png;base64,").count(), 3);
         // The rest keep their https URL, which the CSP never loads. They
