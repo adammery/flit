@@ -118,6 +118,22 @@ it("hooks each body image once, however often the frame reloads", async () => {
   }
 });
 
+it("lets only a dark-adapting body drop the frame's white backdrop", () => {
+  const adapting = renderCard({
+    body: {
+      ...body,
+      html: '<!doctype html><html class="flit-adapt"><body>hi</body></html>',
+    },
+  });
+  expect(adapting.container.querySelector("iframe")?.classList).toContain(
+    "adapt",
+  );
+  adapting.unmount();
+
+  const { container } = renderCard();
+  expect(container.querySelector("iframe")?.classList).not.toContain("adapt");
+});
+
 it("removes the frame's own load listener when the card is destroyed", () => {
   const add = vi.spyOn(HTMLIFrameElement.prototype, "addEventListener");
   const remove = vi.spyOn(HTMLIFrameElement.prototype, "removeEventListener");

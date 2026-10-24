@@ -174,6 +174,14 @@
       : original,
   );
 
+  // A body that follows dark mode (mail::sanitize marks its <html>) paints
+  // its own card-coloured canvas; the frame's white backdrop would otherwise
+  // show through at the rounded corners.
+  let adaptsToDark = $derived(
+    shown?.html?.startsWith('<!doctype html><html class="flit-adapt">') ??
+      false,
+  );
+
   // Folded quoted history of a text body; opens per card, like Gmail's •••.
   let showQuoted = $state(false);
 
@@ -639,6 +647,7 @@
              neither may allow-top-navigation: the app frame stays put. -->
         <iframe
           class="body-frame"
+          class:adapt={adaptsToDark}
           title="Message body"
           sandbox="allow-same-origin allow-popups"
           srcdoc={shown.html}
@@ -1180,6 +1189,12 @@
     border: none;
     background: #ffffff;
     border-radius: 6px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .body-frame.adapt {
+      background: transparent;
+    }
   }
 
   .actions {
